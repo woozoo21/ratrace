@@ -235,8 +235,8 @@ const wallMat = new THREE.MeshStandardMaterial({ map: crateTex });
 // ============================================================
 const CELL = 4;
 const WALL_H = 3;
-const TODAY = new Date();
-const DAILY_SEED = Math.floor(Date.now() / 86400000);
+const now = new Date();
+const DAILY_SEED = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
 const GHOST_KEY = `ratrace_ghost_v2_${DAILY_SEED}`;
 
 const LEVELS = {
