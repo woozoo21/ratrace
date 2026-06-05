@@ -235,9 +235,9 @@ const wallMat = new THREE.MeshStandardMaterial({ map: crateTex });
 const CELL = 4;
 const WALL_H = 3;
 const LEVELS = {
-  easy:   { cw: 6,  ch: 6,  par: 30, label: 'Easy',   seed: 1337 },
-  medium: { cw: 9,  ch: 9,  par: 55, label: 'Medium', seed: 24601 },
-  hard:   { cw: 13, ch: 13, par: 95, label: 'Hard',   seed: 90210 },
+  easy:   { cw: 6, ch: 6, par: 30, label: 'Easy',   seed: 1337,  cheeseCount: 7  },
+  medium: { cw: 6, ch: 6, par: 45, label: 'Medium', seed: 1337,  cheeseCount: 14 },
+  hard:   { cw: 6, ch: 6, par: 65, label: 'Hard',   seed: 1337,  cheeseCount: 14 },
 };
 let levelKey = 'easy';
 let CW = LEVELS.easy.cw, CH = LEVELS.easy.ch, par = LEVELS.easy.par;
@@ -438,29 +438,77 @@ const cheeseMats = [];
 function spawnCheese() {
   for (const c of cheeses) scene.remove(c);
   cheeses.length = 0;
-  const open = [];
-  for (let r = 1; r < GH - 1; r++) for (let c = 1; c < GW - 1; c++)
-    if (!grid[r][c] && !(r === 1 && c === 1) && !(r === GH - 2 && c === GW - 2)) open.push([r, c]);
-  const crand = makeRNG(LEVELS[levelKey].seed + 777);
-  for (let i = open.length - 1; i > 0; i--) { const j = (crand() * (i + 1)) | 0;[open[i], open[j]] = [open[j], open[i]]; }
-  const count = Math.min(14, open.length);
-  for (let i = 0; i < count; i++) {
-    const [r, c] = open[i];
-    let item;
-    if (cheeseTemplate) {
-      item = cheeseTemplate.clone(true);
-      item.scale.setScalar(CHEESE_SCALE);
-      item.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    } else {
-      item = new THREE.Mesh(cheeseGeo, cheeseMat);
-      item.castShadow = true;
+  const count = Math.min(LEVELS[levelKey].cheeseCount, 99);
+
+  if (levelKey === 'hard') {
+    // BFS from start to get distance of every cell
+    const dist = Array.from({ length: GH }, () => Array(GW).fill(-1));
+    const queue = [[1, 1]];
+    dist[1][1] = 0;
+    while (queue.length) {
+      const [r, c] = queue.shift();
+      for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+        const nr = r+dr, nc = c+dc;
+        if (nr>=0 && nr<GH && nc>=0 && nc<GW && !grid[nr][nc] && dist[nr][nc]===-1) {
+          dist[nr][nc] = dist[r][c] + 1;
+          queue.push([nr, nc]);
+        }
+      }
     }
-    item.position.set(toWorldX(c), CHEESE_Y, toWorldZ(r));
-    item.userData.phase = Math.random() * Math.PI * 2;
-    item.userData.baseY = CHEESE_Y;
-    scene.add(item); cheeses.push(item);
+    // Count open neighbours to find dead ends (only 1 open neighbour = dead end)
+    const open = [];
+    for (let r = 1; r < GH-1; r++) for (let c = 1; c < GW-1; c++) {
+      if (grid[r][c] || (r===1&&c===1) || (r===GH-2&&c===GW-2) || dist[r][c]===-1) continue;
+      let openNeighbours = 0;
+      for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]])
+        if (!grid[r+dr][c+dc]) openNeighbours++;
+      open.push({ r, c, d: dist[r][c], dead: openNeighbours === 1 });
+    }
+    // Sort by distance, then pick every Nth cell so cheese spreads across whole maze
+    open.sort((a, b) => b.d - a.d);
+    const step = Math.ceil(open.length / count);
+    const chosen = [];
+    for (let i = 0; i < open.length && chosen.length < count; i += Math.max(1, step)) {
+      chosen.push(open[i]);
+    }
+    // Fill remaining slots from anywhere not already chosen
+    if (chosen.length < count) {
+      for (const cell of open) {
+        if (chosen.length >= count) break;
+        if (!chosen.includes(cell)) chosen.push(cell);
+      }
+    }
+    for (const { r, c } of chosen) placeCheeseAt(r, c);
+    
+  } else {
+    // Easy + medium: same natural random placement as original
+    const open = [];
+    for (let r = 1; r < GH - 1; r++) for (let c = 1; c < GW - 1; c++)
+      if (!grid[r][c] && !(r === 1 && c === 1) && !(r === GH - 2 && c === GW - 2)) open.push([r, c]);
+    const crand = makeRNG(LEVELS[levelKey].seed + 777);
+    for (let i = open.length - 1; i > 0; i--) { const j = (crand() * (i + 1)) | 0; [open[i], open[j]] = [open[j], open[i]]; }
+    for (let i = 0; i < Math.min(count, open.length); i++) {
+      const [r, c] = open[i];
+      placeCheeseAt(r, c);
+    }
   }
   total = cheeses.length;
+}
+
+function placeCheeseAt(r, c) {
+  let item;
+  if (cheeseTemplate) {
+    item = cheeseTemplate.clone(true);
+    item.scale.setScalar(CHEESE_SCALE);
+    item.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  } else {
+    item = new THREE.Mesh(cheeseGeo, cheeseMat);
+    item.castShadow = true;
+  }
+  item.position.set(toWorldX(c), CHEESE_Y, toWorldZ(r));
+  item.userData.phase = Math.random() * Math.PI * 2;
+  item.userData.baseY = CHEESE_Y;
+  scene.add(item); cheeses.push(item);
 }
 
 new GLTFLoader().load(CHEESE_URL, (g) => {
@@ -493,7 +541,6 @@ new GLTFLoader().load(MODEL_URL, (gltf) => {
       mats.forEach((m) => { if (m) m.side = THREE.DoubleSide; });
     }
   });
-  rat.children.slice().forEach((c) => { c.visible = false; });
   rat.add(model);
 }, undefined, (e) => console.error('Model load failed (is rat.glb next to index.html?):', e));
 
