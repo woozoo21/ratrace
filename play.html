@@ -774,8 +774,8 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.getElapsedTime();
 
-  const accel = 42, friction = 20, turnRate = 2.6;
-  const maxSpeed = 15;
+  const accel = 50, friction = 20, turnRate = 2.8;
+  const maxSpeed = 20;
   if (keys['w'] || keys['arrowup'])   speed += accel * dt;
   else if (keys['s'] || keys['arrowdown']) speed -= accel * dt;
   else speed -= Math.sign(speed) * Math.min(Math.abs(speed), friction * dt);
