@@ -610,6 +610,8 @@ const boardList = document.getElementById('boardList');
 const nameInput = document.getElementById('nameInput');
 const saveBtn = document.getElementById('saveBtn');
 const saveMsg = document.getElementById('saveMsg');
+const savedName = localStorage.getItem('ratrace_username');
+if (savedName) { nameInput.value = savedName; nameInput.disabled = true; }
 
 async function loadScores() {
   try {
@@ -622,9 +624,15 @@ async function loadScores() {
 async function addScore(name, time, lvl) {
   const scores = await loadScores();
   if (!scores[lvl]) scores[lvl] = [];
-  scores[lvl].push({ name: name.slice(0, 14), time: +time.toFixed(1), date: DAILY_SEED });
+  const newTime = +time.toFixed(1);
+  const existing = scores[lvl].findIndex(s => s.name === name.slice(0, 14) && s.date === DAILY_SEED);
+  if (existing !== -1) {
+    if (newTime < scores[lvl][existing].time) scores[lvl][existing].time = newTime;
+  } else {
+    scores[lvl].push({ name: name.slice(0, 14), time: newTime, date: DAILY_SEED });
+  }
   scores[lvl].sort((a, b) => a.time - b.time);
-  scores[lvl] = scores[lvl].slice(0, 50); // keep top 50 per level
+  scores[lvl] = scores[lvl].slice(0, 50);
   try {
     await fetch(BIN_URL, {
       method: 'PUT',
@@ -649,7 +657,9 @@ document.getElementById('boardClose').onclick = () => { boardEl.style.display = 
 boardEl.querySelectorAll('.lvlbtns button').forEach((b) => { b.onclick = () => renderBoard(b.dataset.lvl); });
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveBtn.click(); });
 saveBtn.onclick = async () => {
-  const nm = (nameInput.value || 'Anon').trim() || 'Anon';
+  let nm = (nameInput.value || 'Anon').trim() || 'Anon';
+  localStorage.setItem('ratrace_username', nm);
+  
   saveBtn.disabled = true; nameInput.disabled = true;
   saveMsg.textContent = 'Saving…';
   await addScore(nm, raceTime, levelKey);
