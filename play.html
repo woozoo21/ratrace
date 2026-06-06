@@ -770,8 +770,20 @@ const fwd = new THREE.Vector3();
 loadGhost(levelKey);
 resetRace();
 
+const FIXED_DT = 1 / 60;
+let accumulator = 0;
+
 function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  // const dt = Math.min(clock.getDelta(), 0.05);
+  const rawDt = Math.min(clock.getDelta(), 0.1);
+  accumulator += rawDt;
+  const dt = FIXED_DT;
+  if (accumulator < FIXED_DT) {
+    controls.update();
+    renderer.render(scene, camera);
+    return;
+  }
+  accumulator -= FIXED_DT;
   const t = clock.getElapsedTime();
 
   const accel = 50, friction = 20, turnRate = 2.8;
