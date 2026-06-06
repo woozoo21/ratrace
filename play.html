@@ -126,6 +126,21 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, setDoc, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBA5B58lasyj0jsmvjEjrnuVRspt3OFpio",
+  authDomain: "ratraceeee.firebaseapp.com",
+  projectId: "ratraceeee",
+  storageBucket: "ratraceeee.firebasestorage.app",
+  messagingSenderId: "1098222193249",
+  appId: "1:1098222193249:web:1f11e2b89709132565f820",
+  measurementId: "G-VGDMLBHC88"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
 const ASSETS = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples';
 
 // ============================================================
@@ -602,10 +617,6 @@ document.getElementById('btnEasy').onclick   = () => { setLevel('easy');   board
 document.getElementById('btnMedium').onclick = () => { setLevel('medium'); boardEl.style.display = 'none'; };
 document.getElementById('btnHard').onclick   = () => { setLevel('hard');   boardEl.style.display = 'none'; };
 
-const BIN_ID = '6a2239edda38895dfe8a2178';
-const BIN_KEY = '$2a$10$MR44tsNzsVDO4C/dGli.Ae0BaVkBsF2eBLrp3pc0g18WOqx2GGy.u';
-const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-
 const boardEl = document.getElementById('board');
 const boardList = document.getElementById('boardList');
 const nameInput = document.getElementById('nameInput');
@@ -614,43 +625,54 @@ const saveMsg = document.getElementById('saveMsg');
 const savedName = localStorage.getItem('ratrace_username');
 if (savedName) { nameInput.value = savedName; nameInput.disabled = true; }
 
-async function loadScores() {
-  try {
-    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': BIN_KEY } });
-    const data = await res.json();
-    return data.record || { easy: [], medium: [], hard: [] };
-  } catch { return { easy: [], medium: [], hard: [] }; }
-}
-
-async function addScore(name, time, lvl) {
-  const scores = await loadScores();
-  if (!scores[lvl]) scores[lvl] = [];
-  const newTime = +time.toFixed(2);
-  const existing = scores[lvl].findIndex(s => s.name === name.slice(0, 14) && s.date === DAILY_SEED);
-  if (existing !== -1) {
-    if (newTime < scores[lvl][existing].time) scores[lvl][existing].time = newTime;
-  } else {
-    scores[lvl].push({ name: name.slice(0, 14), time: newTime, date: DAILY_SEED });
-  }
-  scores[lvl].sort((a, b) => a.time - b.time);
-  scores[lvl] = scores[lvl].slice(0, 50);
-  try {
-    await fetch(BIN_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': BIN_KEY },
-      body: JSON.stringify(scores)
-    });
-  } catch (e) { console.warn('save failed', e); }
+async function addScore(name, time, lvl, frames) {
+  const docId = `${DAILY_SEED}_${lvl}_${name}`;
+  const ref = doc(db, 'scores', docId);
+  const existing = await getDoc(ref);
+  if (existing.exists() && existing.data().time <= time) return; // only save if better
+  // Downsample frames to every 5th to save space
+  const sampled = frames.filter((_, i) => i % 5 === 0);
+  await setDoc(ref, { name, time, lvl, date: DAILY_SEED, frames: sampled });
 }
 
 async function renderBoard(lvl) {
   boardList.innerHTML = '<p style="color:#aaa">Loading…</p>';
-  const scores = await loadScores();
-  const a = (scores[lvl] || []).filter(s => s.date === DAILY_SEED).slice(0, 10);
+  const q = query(
+    collection(db, 'scores'),
+    where('lvl', '==', lvl),
+    where('date', '==', DAILY_SEED),
+    orderBy('time'),
+    limit(10)
+  );
+  const snap = await getDocs(q);
   const label = LEVELS[lvl].label;
-  boardList.innerHTML = a.length
-    ? `<p style="color:#9fe">${label} — today's best times</p><ol>` + a.map((s) => `<li>${s.name} — ${s.time}s</li>`).join('') + '</ol>'
-    : `<p>No times yet for <b>${label}</b> today. Be the first!</p>`;
+  if (snap.empty) {
+    boardList.innerHTML = `<p>No times yet for <b>${label}</b> today. Be the first!</p>`;
+    return;
+  }
+  let html = `<p style="color:#9fe">${label} — today's best times</p><ol>`;
+  snap.forEach(d => {
+    const s = d.data();
+    html += `<li>${s.name} — ${s.time.toFixed(2)}s <button class="racebtn" data-id="${d.id}">Ghost Race</button></li>`;
+  });
+  html += '</ol>';
+  boardList.innerHTML = html;
+  boardList.querySelectorAll('.racebtn').forEach(btn => {
+    btn.style.cssText = 'font-size:11px;padding:2px 7px;margin-left:8px;background:#222;color:#9fe;border:1px solid #9fe;border-radius:4px;cursor:pointer;';
+    btn.onclick = async () => {
+      const snap = await getDoc(doc(db, 'scores', btn.dataset.id));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      ghostRecording = data.frames;
+      ghostBestTime = data.time;
+      ghostOn = true;
+      document.getElementById('btnGhost').textContent = 'Ghost (G): On';
+      updateGhostHud();
+      boardEl.style.display = 'none';
+      resetRace();
+      alert(`Racing ghost of ${data.name} (${data.time.toFixed(2)}s)!`);
+    };
+  });
 }
 
 document.getElementById('btnBoard').onclick = () => { renderBoard(levelKey); boardEl.style.display = 'block'; };
@@ -658,13 +680,13 @@ document.getElementById('boardClose').onclick = () => { boardEl.style.display = 
 boardEl.querySelectorAll('.lvlbtns button').forEach((b) => { b.onclick = () => renderBoard(b.dataset.lvl); });
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveBtn.click(); });
 saveBtn.onclick = async () => {
-  let nm = (nameInput.value || 'Anon').trim() || 'Anon';
+  const nm = (nameInput.value || 'Anon').trim() || 'Anon';
   localStorage.setItem('ratrace_username', nm);
-  
-  saveBtn.disabled = true; nameInput.disabled = true;
+  nameInput.value = nm; nameInput.disabled = true;
+  saveBtn.disabled = true;
   saveMsg.textContent = 'Saving…';
-  await addScore(nm, raceTime, levelKey);
-  saveMsg.textContent = 'Saved! See 🏆 Leaderboard to see standings.';
+  await addScore(nm, raceTime, levelKey, currentRun);
+  saveMsg.textContent = 'Saved! 🧀  Open 🏆 Leaderboard to see standings.';
 };
 
 const miniCanvas = document.getElementById('minimap');
