@@ -402,7 +402,7 @@ function saveGhost(lvl, time, frames) {
 
 function updateGhostHud() {
   if (!ghostOn) { ghostHud.textContent = ''; return; }
-  ghostHud.textContent = ghostBestTime !== null ? `Ghost: ${ghostBestTime.toFixed(1)}s` : 'Ghost: no best yet';
+  ghostHud.textContent = ghostBestTime !== null ? `Ghost: ${ghostBestTime.toFixed(2)}s` : 'Ghost: no best yet';
 }
 
 function tickGhost(t) {
@@ -557,7 +557,7 @@ const hud = document.getElementById('hud');
 const winEl = document.getElementById('win');
 const gateHint = document.getElementById('gatehint');
 function updateHUD() {
-  hud.textContent = `🧀 ${collected}/${total}  |  ⏱ ${raceTime.toFixed(1)}s`;
+  hud.textContent = `🧀 ${collected}/${total}  |  ⏱ ${raceTime.toFixed(2)}s`;
 }
 
 let dayNightOn = false, nightMode = false, minimapOn = true, followCam = true, savedCamOffset = null;
@@ -625,7 +625,7 @@ async function loadScores() {
 async function addScore(name, time, lvl) {
   const scores = await loadScores();
   if (!scores[lvl]) scores[lvl] = [];
-  const newTime = +time.toFixed(1);
+  const newTime = +time.toFixed(2);
   const existing = scores[lvl].findIndex(s => s.name === name.slice(0, 14) && s.date === DAILY_SEED);
   if (existing !== -1) {
     if (newTime < scores[lvl][existing].time) scores[lvl][existing].time = newTime;
@@ -857,7 +857,7 @@ function animate() {
     const beat = raceTime <= par;
     const newBest = ghostBestTime !== null && raceTime === ghostBestTime;
     document.getElementById('winMsg').innerHTML =
-      `🏁 Finished!<br><span style="font-size:15px">${LEVELS[levelKey].label} &nbsp;·&nbsp; Time: ${raceTime.toFixed(1)}s &nbsp;·&nbsp; Par: ${par}s<br>` +
+      `🏁 Finished!<br><span style="font-size:15px">${LEVELS[levelKey].label} &nbsp;·&nbsp; Time: ${raceTime.toFixed(2)}s &nbsp;·&nbsp; Par: ${par}s<br>` +
       (newBest ? 'NEW BEST TIME OMG!! Ghost updated. ' : '') +
       (beat ? 'You beat the par time!' : '⏱ Just over par — try again!') + '</span>';
     nameInput.value = ''; nameInput.disabled = false; saveBtn.disabled = false; saveMsg.textContent = '';
