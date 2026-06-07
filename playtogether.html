@@ -8,21 +8,36 @@
   * { box-sizing:border-box; margin:0; padding:0; }
   html,body { height:100%; background:#0a0a0a; font-family:monospace; overflow:hidden; }
   #startScreen {
-    position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:32px;
-    background:radial-gradient(ellipse at center,#1a2a1a 0%,#0a0a0a 100%); z-index:100;
-  }
-  #startScreen h1 { font-size:52px; color:#ffd35a; text-shadow:0 0 30px #ffd35a88; letter-spacing:4px; }
-  #startScreen p  { color:#9fe; font-size:15px; opacity:0.7; }
-  .startBtns { display:flex; gap:24px; flex-wrap:wrap; justify-content:center; }
-  .startBtn {
-    background:#111; border:2px solid #ffd35a; color:#ffd35a; font-family:monospace;
-    font-size:20px; padding:20px 40px; border-radius:12px; cursor:pointer; transition:all 0.2s;
-    display:flex; flex-direction:column; align-items:center; gap:8px;
-  }
-  .startBtn:hover { background:#2a2410; transform:scale(1.05); box-shadow:0 0 20px #ffd35a44; }
-  .startBtn span  { font-size:40px; }
-  .startBtn small { font-size:12px; color:#aaa; }
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:28px;
+  background: rgba(0,0,0,0.62);
+  backdrop-filter: blur(2px);
+  z-index:100;
+}
+#startScreen h1 {
+  font-size:58px; color:#ffd35a; letter-spacing:8px;
+  text-shadow: 0 0 40px #ffd35a66, 0 2px 0 #000;
+  font-family: monospace;
+}
+#startScreen p  { color:#ccc; font-size:14px; letter-spacing:2px; opacity:0.8; }
+.startBtns { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+.startBtn {
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,211,90,0.4);
+  color:#ffd35a; font-family:monospace;
+  font-size:17px; padding:22px 38px;
+  border-radius:4px; cursor:pointer; transition:all 0.25s;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  backdrop-filter: blur(8px);
+}
+.startBtn:hover {
+  background: rgba(255,211,90,0.1);
+  border-color: #ffd35a;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 32px #ffd35a22;
+}
+.startBtn span  { font-size:36px; }
+.startBtn small { font-size:11px; color:#888; letter-spacing:1px; text-transform:uppercase; }
   #gameScreen { position:absolute; inset:0; display:none; }
   #info {
     position:absolute; top:10px; left:10px; color:#fff; font-family:monospace; font-size:13px;
@@ -89,7 +104,7 @@
 <body>
 
 <div id="startScreen">
-  <div style="text-align:center"><h1>🐭 RAT RACE</h1><p>Navigate the maze. Collect the cheese. Beat your friends.</p></div>
+  <div style="text-align:center"><h1>RAT RACE</h1></div>
   <div class="startBtns">
     <button class="startBtn" id="btnSolo"><span>🧀</span>Daily Solo<small>Compete on the daily maze</small></button>
     <button class="startBtn" id="btnMulti"><span>👥</span>Multiplayer<small>Race friends in real time</small></button>
@@ -97,7 +112,13 @@
 </div>
 
 <div id="mpScreen">
-  <h2>👥 Multiplayer</h2>
+  <h2>Multiplayer</h2>
+  <div style="color:#aaa;font-size:13px;text-align:center;line-height:2;background:rgba(0,0,0,0.5);padding:12px 24px;border-radius:8px;border:1px solid #333;max-width:320px">
+    First rat to cross the finish wins<br>
+    One cheese hidden in the maze<br>
+    Grab it to slow all other players<br>
+    You don't slow down if you cut it
+  </div>
   <div class="mpBox">
     <label>Create a new room</label>
     <button id="btnCreateRoom">Create Room</button>
