@@ -167,57 +167,79 @@ async function addScore(name, time, lvl, frames) {
 
 async function renderBoard(lvl) {
   const boardList = document.getElementById('boardList');
+  if (lvl === 'weekly') {
   boardList.innerHTML = '<p style="color:#aaa">Loading…</p>';
-  const q = query(collection(db,'scores'), where('lvl','==',lvl), where('weekSeed','==',WEEKLY_SEED), orderBy('time'), limit(50));
-  let snap;
-  try { snap = await getDocs(q); }
-  catch (e) { boardList.innerHTML = '<p style="color:red">Error — check console.</p>'; console.error(e); return; }
 
-  const byDay = {};
-  snap.forEach(d => {
-    const s = d.data();
-    if (!byDay[s.date] || s.time < byDay[s.date].time) byDay[s.date] = { ...s, docId: d.id };
-  });
-
-  const label = SOLO_LEVELS[lvl].label;
-  let html = `<p style="color:#9fe">${label} — this week's daily winners</p>`;
-  html += '<table style="width:100%;border-collapse:collapse;margin-top:8px">';
-  html += '<tr style="color:#9fe;border-bottom:1px solid #333"><th style="text-align:left;padding:4px 8px">Day</th><th style="text-align:left;padding:4px 8px">Winner</th><th style="text-align:left;padding:4px 8px">Time</th><th></th></tr>';
-
-  for (let i=0; i<7; i++) {
-    const d    = new Date(monday); d.setDate(monday.getDate()+i);
+  // Fetch top 3 for each day
+  const dayData = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
     const seed = d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate();
-    const day  = DAY_NAMES[d.getDay()];
-    const entry= byDay[seed];
+    const dayName = DAY_NAMES[d.getDay()];
     const isToday = seed === DAILY_SEED;
-    const rowStyle = isToday ? 'background:#1a2a1a' : '';
-    if (entry) {
-      html += `<tr style="${rowStyle}">
-        <td style="padding:5px 8px;color:${isToday?'#ffd35a':'#aaa'}">${day}${isToday?' ★':''}</td>
-        <td style="padding:5px 8px">${entry.name}</td>
-        <td style="padding:5px 8px;color:#ffd35a">${entry.time.toFixed(2)}s</td>
-        <td style="padding:5px 8px"><button class="racebtn" data-id="${entry.docId}" style="font-size:11px;padding:2px 7px;background:#222;color:#9fe;border:1px solid #9fe;border-radius:4px;cursor:pointer">👻 Race</button></td>
-      </tr>`;
-    } else {
-      html += `<tr style="${rowStyle}">
-        <td style="padding:5px 8px;color:${isToday?'#ffd35a':'#555'}">${day}${isToday?' ★':''}</td>
-        <td style="padding:5px 8px;color:#555" colspan="3">${isToday?'Be the first!':'—'}</td>
-      </tr>`;
-    }
+    let entries = [];
+    try {
+      const q = query(collection(db,'scores'), where('date','==',seed), orderBy('time'), limit(3));
+      const snap = await getDocs(q);
+      snap.forEach(d => entries.push(d.data()));
+    } catch(e) {}
+    dayData.push({ dayName, isToday, entries });
   }
+
+  // Build table: days as columns, ranks as rows
+  let html = '<p style="color:#9fe;margin-bottom:10px">Weekly Top 3</p>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+
+  // Header row
+  html += '<tr>';
+  html += '<td style="padding:4px 6px;color:#555"></td>';
+  dayData.forEach(({ dayName, isToday }) => {
+    html += `<th style="padding:4px 6px;color:${isToday?'#ffd35a':'#9fe'};text-align:center">${dayName}</th>`;
+  });
+  html += '</tr>';
+
+  // Rows 1, 2, 3
+  for (let rank = 0; rank < 3; rank++) {
+    const medal = rank===0?'🥇':rank===1?'🥈':'🥉';
+    html += '<tr>';
+    html += `<td style="padding:4px 6px">${medal}</td>`;
+    dayData.forEach(({ entries }) => {
+      const e = entries[rank];
+      html += `<td style="padding:4px 6px;text-align:center;color:${rank===0?'#ffd35a':'#fff'}">`;
+      html += e ? `${e.name}<br><span style="color:#ffd35a;font-size:11px">${e.time.toFixed(2)}s</span>` : '<span style="color:#555">—</span>';
+      html += '</td>';
+    });
+    html += '</tr>';
+  }
+
   html += '</table>';
   boardList.innerHTML = html;
+  return;
+}
 
+  // Daily top 10 for this level
+  boardList.innerHTML = '<p style="color:#aaa">Loading…</p>';
+  const q = query(collection(db,'scores'), where('lvl','==',lvl), where('date','==',DAILY_SEED), orderBy('time'), limit(10));
+  let snap;
+  try { snap = await getDocs(q); } catch(e) { boardList.innerHTML='<p style="color:red">Error — check console.</p>'; console.error(e); return; }
+  const label = SOLO_LEVELS[lvl].label;
+  if (snap.empty) { boardList.innerHTML=`<p>No times yet for <b>${label}</b> today. Be the first!</p>`; return; }
+  let html = `<p style="color:#9fe">${label} — today's top 10</p><ol style="padding-left:20px;line-height:1.8">`;
+  snap.forEach(d => {
+    const s=d.data();
+    html += `<li>${s.name} — ${s.time.toFixed(2)}s <button class="racebtn" data-id="${d.id}" style="font-size:11px;padding:2px 7px;background:#222;color:#9fe;border:1px solid #9fe;border-radius:4px;cursor:pointer">Ghost Race</button></li>`;
+  });
+  html += '</ol>';
+  boardList.innerHTML = html;
   boardList.querySelectorAll('.racebtn').forEach(btn => {
     btn.onclick = async () => {
-      const snap = await getDoc(doc(db, 'scores', btn.dataset.id));
+      const snap = await getDoc(doc(db,'scores',btn.dataset.id));
       if (!snap.exists()) return;
       const data = snap.data();
-      ghostRecording = data.frames; ghostBestTime = data.time;
-      ghostOn = true;
-      document.getElementById('btnGhost').textContent = 'Ghost (G): On';
+      ghostRecording=data.frames; ghostBestTime=data.time; ghostOn=true;
+      document.getElementById('btnGhost').textContent='Ghost (G): On';
       updateGhostHud();
-      document.getElementById('board').style.display = 'none';
+      document.getElementById('board').style.display='none';
       resetRace();
       alert(`Racing ghost of ${data.name} (${data.time.toFixed(2)}s)!`);
     };
