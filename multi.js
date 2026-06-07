@@ -293,7 +293,7 @@ function listenPlayers(code) {
       if (p.hasCheese && !mpCheeseWinner && p.name !== myName) {
         mpCheeseWinner = p.name;
         showCheeseNotif(p.name);
-        mySpeedPenalty = 0.90;
+        mySpeedPenalty = 0.6;
       }
 
       // Maze winner (someone else finished)
