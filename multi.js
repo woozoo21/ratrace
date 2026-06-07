@@ -66,11 +66,22 @@ function genRoomCode() {
 }
 
 function askName(cb) {
-  if (myName && myName !== 'Anon') { cb(myName); return; }
-  const nm = prompt('Enter your name (max 14 chars):', '') || 'Anon';
-  myName = nm.trim().slice(0,14) || 'Anon';
-  localStorage.setItem('ratrace_username', myName);
-  cb(myName);
+  const modal = document.getElementById('nameModal');
+  const input = document.getElementById('nameModalInput');
+  const btn   = document.getElementById('nameModalBtn');
+  const current = localStorage.getItem('ratrace_username') || '';
+  input.value = current;
+  modal.style.display = 'flex';
+  input.focus();
+  const done = () => {
+    const nm = input.value.trim().slice(0,14) || 'Anon';
+    myName = nm;
+    localStorage.setItem('ratrace_username', nm);
+    modal.style.display = 'none';
+    cb(nm);
+  };
+  btn.onclick = done;
+  input.onkeydown = (e) => { if (e.key === 'Enter') done(); };
 }
 
 function showCheeseNotif(name) {
