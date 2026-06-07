@@ -5,212 +5,103 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rat Race</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: #0a0a0a; font-family: monospace; overflow: hidden; }
-
-  /* ── START SCREEN ── */
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; background:#0a0a0a; font-family:monospace; overflow:hidden; }
   #startScreen {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 32px;
-    background: radial-gradient(ellipse at center, #1a2a1a 0%, #0a0a0a 100%);
-    z-index: 100;
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:32px;
+    background:radial-gradient(ellipse at center,#1a2a1a 0%,#0a0a0a 100%); z-index:100;
   }
-  #startScreen h1 { font-size: 52px; color: #ffd35a; text-shadow: 0 0 30px #ffd35a88; letter-spacing: 4px; }
-  #startScreen p { color: #9fe; font-size: 15px; opacity: 0.7; }
-  .startBtns { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  #startScreen h1 { font-size:52px; color:#ffd35a; text-shadow:0 0 30px #ffd35a88; letter-spacing:4px; }
+  #startScreen p  { color:#9fe; font-size:15px; opacity:0.7; }
+  .startBtns { display:flex; gap:24px; flex-wrap:wrap; justify-content:center; }
   .startBtn {
-    background: #111; border: 2px solid #ffd35a; color: #ffd35a;
-    font-family: monospace; font-size: 20px; padding: 20px 40px;
-    border-radius: 12px; cursor: pointer; transition: all 0.2s;
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background:#111; border:2px solid #ffd35a; color:#ffd35a; font-family:monospace;
+    font-size:20px; padding:20px 40px; border-radius:12px; cursor:pointer; transition:all 0.2s;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
   }
-  .startBtn:hover { background: #2a2410; transform: scale(1.05); box-shadow: 0 0 20px #ffd35a44; }
-  .startBtn span { font-size: 40px; }
-  .startBtn small { font-size: 12px; color: #aaa; }
-
-  /* ── GAME SCREEN ── */
-  #gameScreen { position: absolute; inset: 0; display: none; }
-
+  .startBtn:hover { background:#2a2410; transform:scale(1.05); box-shadow:0 0 20px #ffd35a44; }
+  .startBtn span  { font-size:40px; }
+  .startBtn small { font-size:12px; color:#aaa; }
+  #gameScreen { position:absolute; inset:0; display:none; }
   #info {
-    position: absolute; top: 10px; left: 10px;
-    color: #fff; font-family: monospace; font-size: 13px;
-    background: rgba(0,0,0,0.55); padding: 10px 12px; border-radius: 8px;
-    max-width: 320px; line-height: 1.5; pointer-events: none; z-index: 10;
+    position:absolute; top:10px; left:10px; color:#fff; font-family:monospace; font-size:13px;
+    background:rgba(0,0,0,0.55); padding:10px 12px; border-radius:8px;
+    max-width:320px; line-height:1.5; pointer-events:none; z-index:10; display:none;
   }
-  #info b { color: #ffd35a; }
-  #hud { font-size: 16px; color: #ffd35a; }
-  #ghosthud { font-size: 14px; color: #aef; min-height: 18px; }
-  #controls {
-    position: absolute; bottom: 14px; left: 10px;
-    font-family: monospace; display: flex; gap: 8px; flex-wrap: wrap; z-index: 10;
-  }
-  #controls button {
-    background: #222; color: #fff; border: 1px solid #555; border-radius: 6px;
-    padding: 8px 12px; font-family: monospace; font-size: 13px; cursor: pointer;
-  }
-  #controls button:hover { background: #333; }
+  #info b { color:#ffd35a; }
+  #hud { font-size:16px; color:#ffd35a; }
+  #ghosthud { font-size:14px; color:#aef; min-height:18px; }
+  #controls { position:absolute; bottom:14px; left:10px; font-family:monospace; display:flex; gap:8px; flex-wrap:wrap; z-index:10; }
+  #controls button { background:#222; color:#fff; border:1px solid #555; border-radius:6px; padding:8px 12px; font-family:monospace; font-size:13px; cursor:pointer; }
+  #controls button:hover { background:#333; }
   #win {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    display: none; color: #fff; font-family: monospace; font-size: 22px;
-    text-align: center; background: rgba(20,20,20,0.92);
-    padding: 24px 32px; border-radius: 14px; border: 2px solid #ffd35a; z-index: 20;
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    display:none; color:#fff; font-family:monospace; font-size:22px; text-align:center;
+    background:rgba(20,20,20,0.92); padding:24px 32px; border-radius:14px; border:2px solid #ffd35a; z-index:20;
   }
-  #win input {
-    font-family: monospace; font-size: 15px; padding: 7px 10px; border-radius: 6px;
-    border: 1px solid #888; background: #111; color: #fff; width: 160px; margin: 10px 6px 4px;
-  }
-  #win button {
-    font-family: monospace; font-size: 14px; padding: 8px 14px; border-radius: 6px;
-    border: 1px solid #ffd35a; background: #2a2410; color: #ffd35a; cursor: pointer;
-  }
+  #win input { font-family:monospace; font-size:15px; padding:7px 10px; border-radius:6px; border:1px solid #888; background:#111; color:#fff; width:160px; margin:10px 6px 4px; }
+  #win button { font-family:monospace; font-size:14px; padding:8px 14px; border-radius:6px; border:1px solid #ffd35a; background:#2a2410; color:#ffd35a; cursor:pointer; }
   #board {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    display: none; color: #fff; font-family: monospace; font-size: 14px;
-    background: rgba(20,20,20,0.94); padding: 20px 26px; border-radius: 14px;
-    border: 2px solid #9fe; min-width: 340px; z-index: 20; max-height: 80vh; overflow-y: auto;
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    display:none; color:#fff; font-family:monospace; font-size:14px;
+    background:rgba(20,20,20,0.94); padding:20px 26px; border-radius:14px;
+    border:2px solid #9fe; min-width:340px; z-index:20; max-height:80vh; overflow-y:auto;
   }
-  #board h3 { margin: 0 0 10px; color: #9fe; }
-  #board ol { margin: 6px 0 14px; padding-left: 26px; line-height: 1.6; }
-  #board .lvlbtns button { font-size: 12px; padding: 5px 9px; margin-right: 5px;
-    background: #222; color: #fff; border: 1px solid #555; border-radius: 5px; cursor: pointer; }
-  #board .close { margin-top: 8px; background: #2a2410; color: #ffd35a;
-    border: 1px solid #ffd35a; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-family: monospace; }
-  #loading {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    color: #fff; font-family: monospace; font-size: 15px; z-index: 10;
-  }
-  #minimap {
-    position: absolute; top: 10px; right: 10px;
-    background: rgba(0,0,0,0.55); border: 2px solid #888; border-radius: 8px;
-    transform: rotate(-90deg); z-index: 10;
-  }
-  #gatehint {
-    position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
-    display: none; color: #ffd35a; font-family: monospace; font-size: 15px;
-    background: rgba(0,0,0,0.6); padding: 8px 14px; border-radius: 8px; z-index: 10;
-  }
-  #backBtn {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    background: #222; color: #aaa; border: 1px solid #555; border-radius: 6px;
-    padding: 6px 14px; font-family: monospace; font-size: 12px; cursor: pointer; z-index: 10;
-  }
-  #backBtn:hover { background: #333; color: #fff; }
-
-  /* ── MULTIPLAYER SCREEN ── */
-  #mpScreen {
-    position: absolute; inset: 0; display: none; flex-direction: column;
-    align-items: center; justify-content: center; gap: 24px;
-    background: radial-gradient(ellipse at center, #1a1a2a 0%, #0a0a0a 100%);
-    z-index: 100;
-  }
-  #mpScreen h2 { font-size: 36px; color: #9fe; text-shadow: 0 0 20px #9fe8; }
-  .mpBox {
-    background: #111; border: 2px solid #9fe; border-radius: 12px;
-    padding: 28px 36px; display: flex; flex-direction: column; gap: 14px;
-    min-width: 320px; align-items: center;
-  }
-  .mpBox input {
-    font-family: monospace; font-size: 22px; padding: 10px 14px; border-radius: 8px;
-    border: 1px solid #555; background: #0a0a0a; color: #fff;
-    width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 6px;
-  }
-  .mpBox button {
-    font-family: monospace; font-size: 16px; padding: 12px 24px; border-radius: 8px;
-    border: 2px solid #9fe; background: #0a1a0a; color: #9fe; cursor: pointer;
-    width: 100%; transition: all 0.2s;
-  }
-  .mpBox button:hover { background: #1a3a1a; }
-  .mpBox label { color: #aaa; font-size: 13px; }
-  .mpOrDivider { color: #555; font-size: 18px; }
-  #mpBack { background: none; border: 1px solid #555; color: #aaa; font-family: monospace;
-    font-size: 13px; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-  #mpBack:hover { color: #fff; }
-
-  /* ── LOBBY SCREEN ── */
-  #lobbyScreen {
-    position: absolute; inset: 0; display: none; flex-direction: column;
-    align-items: center; justify-content: center; gap: 20px;
-    background: radial-gradient(ellipse at center, #1a1a2a 0%, #0a0a0a 100%);
-    z-index: 100;
-  }
-  #lobbyScreen h2 { color: #9fe; font-size: 28px; }
-  #roomCodeDisplay { font-size: 48px; color: #ffd35a; letter-spacing: 10px; text-shadow: 0 0 20px #ffd35a88; }
-  #lobbyPlayers {
-    background: #111; border: 2px solid #9fe; border-radius: 12px;
-    padding: 20px 30px; min-width: 300px; min-height: 120px;
-  }
-  #lobbyPlayers h3 { color: #9fe; margin-bottom: 10px; }
-  #playerList { list-style: none; line-height: 2; }
-  #playerList li { color: #fff; font-size: 15px; }
-  #startGameBtn {
-    font-family: monospace; font-size: 18px; padding: 14px 32px; border-radius: 10px;
-    border: 2px solid #ffd35a; background: #2a2410; color: #ffd35a; cursor: pointer;
-    display: none;
-  }
-  #startGameBtn:hover { background: #3a3410; }
-  #lobbyBack { background: none; border: 1px solid #555; color: #aaa; font-family: monospace;
-    font-size: 13px; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-  #mpLevelSelect { display: flex; gap: 10px; }
-  #mpLevelSelect button {
-    font-family: monospace; font-size: 13px; padding: 8px 16px; border-radius: 6px;
-    border: 1px solid #555; background: #222; color: #fff; cursor: pointer;
-  }
-  #mpLevelSelect button.active { border-color: #ffd35a; color: #ffd35a; background: #2a2410; }
-
-  /* ── COUNTDOWN ── */
-  #countdown {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    font-size: 120px; color: #fff; font-family: monospace; display: none;
-    text-shadow: 0 0 40px #fff; z-index: 30; pointer-events: none;
-  }
-
-  /* ── CHEESE NOTIFICATION ── */
-  #cheeseNotif {
-    position: absolute; top: 30%; left: 50%; transform: translateX(-50%);
-    display: none; color: #ffd35a; font-family: monospace; font-size: 18px;
-    background: rgba(0,0,0,0.85); padding: 14px 24px; border-radius: 10px;
-    border: 2px solid #ffd35a; text-align: center; z-index: 25; pointer-events: none;
-  }
-
-  /* ── MP HUD ── */
-  #mpHud {
-    position: absolute; top: 10px; left: 10px;
-    color: #fff; font-family: monospace; font-size: 13px;
-    background: rgba(0,0,0,0.55); padding: 10px 12px; border-radius: 8px;
-    line-height: 1.6; pointer-events: none; z-index: 10; display: none;
-  }
-  #mpHud b { color: #ffd35a; }
+  #board h3 { margin:0 0 10px; color:#9fe; }
+  #board .lvlbtns button { font-size:12px; padding:5px 9px; margin-right:5px; background:#222; color:#fff; border:1px solid #555; border-radius:5px; cursor:pointer; }
+  #board .close { margin-top:8px; background:#2a2410; color:#ffd35a; border:1px solid #ffd35a; border-radius:6px; padding:7px 14px; cursor:pointer; font-family:monospace; }
+  #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#fff; font-family:monospace; font-size:15px; z-index:10; }
+  #minimap { position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.55); border:2px solid #888; border-radius:8px; transform:rotate(-90deg); z-index:10; }
+  #gatehint { position:absolute; bottom:64px; left:50%; transform:translateX(-50%); display:none; color:#ffd35a; font-family:monospace; font-size:15px; background:rgba(0,0,0,0.6); padding:8px 14px; border-radius:8px; z-index:10; }
+  #backBtn { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:#222; color:#aaa; border:1px solid #555; border-radius:6px; padding:6px 14px; font-family:monospace; font-size:12px; cursor:pointer; z-index:10; }
+  #backBtn:hover { background:#333; color:#fff; }
+  #countdown { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:120px; color:#fff; font-family:monospace; display:none; text-shadow:0 0 40px #fff; z-index:30; pointer-events:none; }
+  #cheeseNotif { position:absolute; top:30%; left:50%; transform:translateX(-50%); display:none; color:#ffd35a; font-family:monospace; font-size:18px; background:rgba(0,0,0,0.85); padding:14px 24px; border-radius:10px; border:2px solid #ffd35a; text-align:center; z-index:25; pointer-events:none; }
+  #mpHud { position:absolute; top:10px; left:10px; color:#fff; font-family:monospace; font-size:13px; background:rgba(0,0,0,0.55); padding:10px 12px; border-radius:8px; line-height:1.6; pointer-events:none; z-index:10; display:none; }
+  #mpHud b { color:#ffd35a; }
+  #mpResultsModal { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); display:none; color:#fff; font-family:monospace; font-size:14px; background:rgba(20,20,20,0.96); padding:28px 36px; border-radius:14px; border:2px solid #ffd35a; min-width:360px; z-index:30; max-height:80vh; overflow-y:auto; text-align:center; }
+  #mpScreen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; gap:24px; background:radial-gradient(ellipse at center,#1a1a2a 0%,#0a0a0a 100%); z-index:100; }
+  #mpScreen h2 { font-size:36px; color:#9fe; text-shadow:0 0 20px #9fe8; }
+  .mpBox { background:#111; border:2px solid #9fe; border-radius:12px; padding:28px 36px; display:flex; flex-direction:column; gap:14px; min-width:320px; align-items:center; }
+  .mpBox input { font-family:monospace; font-size:22px; padding:10px 14px; border-radius:8px; border:1px solid #555; background:#0a0a0a; color:#fff; width:100%; text-align:center; text-transform:uppercase; letter-spacing:6px; }
+  .mpBox button { font-family:monospace; font-size:16px; padding:12px 24px; border-radius:8px; border:2px solid #9fe; background:#0a1a0a; color:#9fe; cursor:pointer; width:100%; transition:all 0.2s; }
+  .mpBox button:hover { background:#1a3a1a; }
+  .mpBox label { color:#aaa; font-size:13px; }
+  .mpOrDiv { color:#555; font-size:18px; }
+  #mpBack { background:none; border:1px solid #555; color:#aaa; font-family:monospace; font-size:13px; padding:8px 16px; border-radius:6px; cursor:pointer; }
+  #mpBack:hover { color:#fff; }
+  #lobbyScreen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; gap:20px; background:radial-gradient(ellipse at center,#1a1a2a 0%,#0a0a0a 100%); z-index:100; }
+  #lobbyScreen h2 { color:#9fe; font-size:28px; }
+  #roomCodeDisplay { font-size:48px; color:#ffd35a; letter-spacing:10px; text-shadow:0 0 20px #ffd35a88; }
+  #lobbyPlayers { background:#111; border:2px solid #9fe; border-radius:12px; padding:20px 30px; min-width:300px; min-height:120px; }
+  #lobbyPlayers h3 { color:#9fe; margin-bottom:10px; }
+  #playerList { list-style:none; line-height:2; }
+  #playerList li { font-size:15px; }
+  #startGameBtn { font-family:monospace; font-size:18px; padding:14px 32px; border-radius:10px; border:2px solid #ffd35a; background:#2a2410; color:#ffd35a; cursor:pointer; display:none; }
+  #startGameBtn:hover { background:#3a3410; }
+  #lobbyBack { background:none; border:1px solid #555; color:#aaa; font-family:monospace; font-size:13px; padding:8px 16px; border-radius:6px; cursor:pointer; }
+  #mpLevelSelect { display:flex; gap:10px; }
+  #mpLevelSelect button { font-family:monospace; font-size:13px; padding:8px 16px; border-radius:6px; border:1px solid #555; background:#222; color:#fff; cursor:pointer; }
+  #mpLevelSelect button.active { border-color:#ffd35a; color:#ffd35a; background:#2a2410; }
 </style>
 </head>
 <body>
 
-<!-- START SCREEN -->
 <div id="startScreen">
-  <div style="text-align:center">
-    <h1>🐭 RAT RACE</h1>
-    <p>Navigate the maze. Collect the cheese. Beat your friends.</p>
-  </div>
+  <div style="text-align:center"><h1>🐭 RAT RACE</h1><p>Navigate the maze. Collect the cheese. Beat your friends.</p></div>
   <div class="startBtns">
-    <button class="startBtn" id="btnSolo">
-      <span>🧀</span>
-      Daily Solo
-      <small>Compete on the daily maze</small>
-    </button>
-    <button class="startBtn" id="btnMulti">
-      <span>👥</span>
-      Multiplayer
-      <small>Race friends in real time</small>
-    </button>
+    <button class="startBtn" id="btnSolo"><span>🧀</span>Daily Solo<small>Compete on the daily maze</small></button>
+    <button class="startBtn" id="btnMulti"><span>👥</span>Multiplayer<small>Race friends in real time</small></button>
   </div>
 </div>
 
-<!-- MULTIPLAYER SETUP SCREEN -->
 <div id="mpScreen">
   <h2>👥 Multiplayer</h2>
   <div class="mpBox">
     <label>Create a new room</label>
     <button id="btnCreateRoom">Create Room</button>
-    <div class="mpOrDivider">— or —</div>
+    <div class="mpOrDiv">— or —</div>
     <label>Join with room code</label>
     <input id="roomCodeInput" maxlength="4" placeholder="ABCD">
     <button id="btnJoinRoom">Join Room</button>
@@ -218,14 +109,10 @@
   <button id="mpBack">← Back</button>
 </div>
 
-<!-- LOBBY SCREEN -->
 <div id="lobbyScreen">
   <h2>Room Code</h2>
   <div id="roomCodeDisplay">----</div>
-  <div id="lobbyPlayers">
-    <h3>Players</h3>
-    <ul id="playerList"></ul>
-  </div>
+  <div id="lobbyPlayers"><h3>Players</h3><ul id="playerList"></ul></div>
   <div id="mpLevelSelect">
     <button data-lvl="easy" class="active">Easy</button>
     <button data-lvl="medium">Medium</button>
@@ -236,42 +123,27 @@
   <button id="lobbyBack">← Leave Room</button>
 </div>
 
-<!-- GAME SCREEN -->
 <div id="gameScreen">
   <button id="backBtn">← Menu</button>
-
-  <!-- SOLO INFO -->
-  <div id="info" style="display:none">
+  <div id="info">
     <b>Rat Race</b> — Daily Solo<br>
     <span style="color:#9fe">Move:</span> W/S &amp; A/D &nbsp;|&nbsp; <span style="color:#9fe">Drag:</span> orbit cam<br>
-    <span style="color:#9fe">Levels:</span> 1 = Easy, 2 = Medium, 3 = Hard<br>
-    <div id="level">Level: Easy &nbsp;·&nbsp; Par: 20s</div>
-    <div id="hud">🧀 0/0 &nbsp;|&nbsp; ⏱ 0.00s</div>
+    <span style="color:#9fe">Levels:</span> 1=Easy 2=Medium 3=Hard<br>
+    <div id="level">Level: Easy · Par: 20s</div>
+    <div id="hud">🧀 0/0 | ⏱ 0.00s</div>
     <div id="ghosthud"></div>
   </div>
-
-  <!-- MP HUD -->
-  <div id="mpHud">
-    <b>🐭 Rat Race</b> — Multiplayer<br>
-    <div id="mpTimer">⏱ 0.00s</div>
-    <div id="mpStatus"></div>
-  </div>
-
-  <div id="controls">
-    <!-- solo buttons injected here -->
-  </div>
-
+  <div id="mpHud"><b>🐭 Rat Race</b> — Multiplayer<br><div id="mpTimer">⏱ 0.00s</div><div id="mpStatus"></div></div>
+  <div id="controls"></div>
   <canvas id="minimap" width="170" height="170"></canvas>
   <div id="gatehint">🔒 Collect all the cheese to open the gate!</div>
   <div id="countdown"></div>
   <div id="cheeseNotif"></div>
-
   <div id="win">
     <div id="winMsg"></div>
     <div><input id="nameInput" placeholder="Enter your name" maxlength="14"><button id="saveBtn">Save time</button></div>
     <div id="saveMsg" style="font-size:14px;color:#9fe;min-height:18px"></div>
   </div>
-
   <div id="board">
     <h3>🏆 Weekly Leaderboard</h3>
     <div class="lvlbtns">
@@ -282,1166 +154,97 @@
     <div id="boardList"></div>
     <button class="close" id="boardClose">Close</button>
   </div>
-
+  <div id="mpResultsModal"><div id="mpResultsList"></div></div>
   <div id="loading">Loading scene…</div>
 </div>
 
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-  }
-}
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
 
 <script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, setDoc, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
-import { getDatabase, ref, set, get, onValue, off, update, remove, push, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+import { startSolo, initSoloFirebase } from './solo.js';
+import { createRoom, joinRoom, leaveRoom, listenLobby, setRoomLevel, triggerStart, startMpGame, initMultiFirebase } from './multi.js';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBA5B58lasyj0jsmvjEjrnuVRspt3OFpio",
-  authDomain: "ratraceeee.firebaseapp.com",
-  projectId: "ratraceeee",
-  storageBucket: "ratraceeee.firebasestorage.app",
-  messagingSenderId: "1098222193249",
-  appId: "1:1098222193249:web:1f11e2b89709132565f820",
-  measurementId: "G-VGDMLBHC88",
-  databaseURL: "https://ratraceeee-default-rtdb.firebaseio.com"
+  apiKey:"AIzaSyBA5B58lasyj0jsmvjEjrnuVRspt3OFpio",
+  authDomain:"ratraceeee.firebaseapp.com",
+  projectId:"ratraceeee",
+  storageBucket:"ratraceeee.firebasestorage.app",
+  messagingSenderId:"1098222193249",
+  appId:"1:1098222193249:web:1f11e2b89709132565f820",
+  measurementId:"G-VGDMLBHC88",
+  databaseURL:"https://ratraceeee-default-rtdb.firebaseio.com"
 };
 const fbApp = initializeApp(firebaseConfig);
-const db = getFirestore(fbApp);
-const rtdb = getDatabase(fbApp);
+initSoloFirebase(fbApp);
+initMultiFirebase(fbApp);
 
-// ============================================================
-// PLAYER IDENTITY
-// ============================================================
-let myName = localStorage.getItem('ratrace_username') || null;
-
-// ============================================================
-// SCREEN MANAGEMENT
-// ============================================================
-const startScreen = document.getElementById('startScreen');
-const mpScreen = document.getElementById('mpScreen');
-const lobbyScreen = document.getElementById('lobbyScreen');
-const gameScreen = document.getElementById('gameScreen');
-
+const screens = { start:document.getElementById('startScreen'), mp:document.getElementById('mpScreen'), lobby:document.getElementById('lobbyScreen'), game:document.getElementById('gameScreen') };
 function showScreen(name) {
-  [startScreen, mpScreen, lobbyScreen, gameScreen].forEach(s => s.style.display = 'none');
-  if (name === 'start') { startScreen.style.display = 'flex'; }
-  else if (name === 'mp') { mpScreen.style.display = 'flex'; }
-  else if (name === 'lobby') { lobbyScreen.style.display = 'flex'; }
-  else if (name === 'game') { gameScreen.style.display = 'block'; }
+  Object.values(screens).forEach(s=>s.style.display='none');
+  const t=screens[name];
+  if(t) t.style.display=(name==='game')?'block':'flex';
 }
 showScreen('start');
 
-// ============================================================
-// GAME MODE
-// ============================================================
-let gameMode = 'solo'; // 'solo' | 'multi'
-
-document.getElementById('btnSolo').onclick = () => {
-  gameMode = 'solo';
-  showScreen('game');
-  document.getElementById('info').style.display = 'block';
-  document.getElementById('mpHud').style.display = 'none';
-  buildSoloControls();
-  initEngine(() => {
-    loadGhost(levelKey);
-    resetRace();
-  });
-};
-
-document.getElementById('btnMulti').onclick = () => {
-  showScreen('mp');
-};
-
-document.getElementById('backBtn').onclick = () => {
-  leaveRoom();
-  showScreen('start');
-  document.getElementById('info').style.display = 'none';
-  document.getElementById('mpHud').style.display = 'none';
-};
-
-document.getElementById('mpBack').onclick = () => showScreen('start');
-
-// ============================================================
-// ASSETS
-// ============================================================
-const ASSETS = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples';
-const MODEL_URL = './rat.glb';
-const MODEL_SCALE = 1;
-const MODEL_Y = 0;
-const MODEL_FACE = 0;
-const CHEESE_URL = './cheese.glb';
-const CHEESE_SCALE = 1;
-const CHEESE_Y = 1;
-const CHEESE_GLOW = 0.18;
-
-// ============================================================
-// SEEDS & LEVELS
-// ============================================================
-const now = new Date();
-const DAILY_SEED = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
-// Weekly seed: use Monday of current week
-const dayOfWeek = now.getDay(); // 0=Sun
-const daysToMonday = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
-const monday = new Date(now); monday.setDate(now.getDate() - daysToMonday);
-const WEEKLY_SEED = monday.getFullYear() * 10000 + (monday.getMonth() + 1) * 100 + monday.getDate();
-
-const GHOST_KEY = `ratrace_ghost_v2_${DAILY_SEED}`;
-
-const SOLO_LEVELS = {
-  easy:   { cw: 6, ch: 6, par: 20, label: 'Easy',   seed: DAILY_SEED,     cheeseCount: 7  },
-  medium: { cw: 6, ch: 6, par: 35, label: 'Medium', seed: DAILY_SEED + 1, cheeseCount: 14 },
-  hard:   { cw: 6, ch: 6, par: 55, label: 'Hard',   seed: DAILY_SEED + 2, cheeseCount: 14 },
-};
-
-const MP_LEVELS = {
-  easy:   { cw: 9, ch: 9, label: 'Easy',   seed: DAILY_SEED + 10 },
-  medium: { cw: 9, ch: 9, label: 'Medium', seed: DAILY_SEED + 11 },
-  hard:   { cw: 9, ch: 9, label: 'Hard',   seed: DAILY_SEED + 12 },
-};
-
-let LEVELS = SOLO_LEVELS;
-let levelKey = 'easy';
-let CW = 6, CH = 6, par = 20;
-
-// ============================================================
-// THREE.JS ENGINE (lazy init)
-// ============================================================
-let engineReady = false;
-let renderer, scene, camera, controls_3d;
-let mazeGroup, rat, ghostRat, botRat;
-let wallGeo, wallMat, ground;
-let cheeseTemplate = null;
-let cheeseMats = [];
-
-let GW, GH, grid;
-let startPos = new THREE.Vector3();
-let finishPos = new THREE.Vector3();
-let finishGate;
-let cheeses = [];
-let cheeseMat, cheeseGeo;
-let speed = 0, yaw = 0;
-let lastRat = new THREE.Vector3();
-const fwd = new THREE.Vector3();
-const clock = new THREE.Clock();
-let collected = 0, total = 0, raceTime = 0, finished = false, started = false;
-let dayNightOn = false, nightMode = false, minimapOn = true, followCam = true, savedCamOffset = null;
-let sun, ambient, hemi, pointLamp, spot, skybox;
-let FIXED_DT = 1/60, accumulator = 0;
-let ghostOn = true, currentRun = [], ghostRecording = null, ghostBestTime = null;
-
-function initEngine(cb) {
-  if (engineReady) { cb(); return; }
-  engineReady = true;
-
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  gameScreen.appendChild(renderer.domElement);
-
-  scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x9bc4e2, 200, 900);
-
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 18, 22);
-
-  controls_3d = new OrbitControls(camera, renderer.domElement);
-  controls_3d.enableDamping = true;
-  controls_3d.dampingFactor = 0.06;
-  controls_3d.maxPolarAngle = Math.PI * 0.49;
-  controls_3d.minDistance = 8;
-  controls_3d.maxDistance = 70;
-
-  // Skybox
-  const cubeLoader = new THREE.CubeTextureLoader();
-  cubeLoader.setPath(`${ASSETS}/textures/cube/SwedishRoyalCastle/`);
-  skybox = cubeLoader.load(['px.jpg','nx.jpg','py.jpg','ny.jpg','pz.jpg','nz.jpg'],
-    () => { document.getElementById('loading').style.display = 'none'; },
-    undefined, () => { scene.background = new THREE.Color(0x87b6e8); }
-  );
-  skybox.colorSpace = THREE.SRGBColorSpace;
-  scene.background = skybox; scene.environment = skybox;
-
-  // Lights
-  ambient = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambient);
-  hemi = new THREE.HemisphereLight(0xbfd9ff, 0x4a6b2a, 0.6); scene.add(hemi);
-  sun = new THREE.DirectionalLight(0xffffff, 2.6);
-  sun.position.set(30, 50, 20); sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { near:1, far:200, left:-70, right:70, top:70, bottom:-70 });
-  scene.add(sun); scene.add(sun.target);
-  pointLamp = new THREE.PointLight(0xffaa55, 0, 60);
-  pointLamp.position.set(0,12,0); scene.add(pointLamp);
-  spot = new THREE.SpotLight(0xfff4d6, 60, 70, Math.PI/6, 0.4, 1);
-  spot.castShadow = true; spot.shadow.mapSize.set(1024,1024);
-  scene.add(spot); scene.add(spot.target);
-
-  // Ground
-  const texLoader = new THREE.TextureLoader();
-  const grass = texLoader.load(`${ASSETS}/textures/terrain/grasslight-big.jpg`);
-  grass.colorSpace = THREE.SRGBColorSpace;
-  grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
-  grass.repeat.set(60,60);
-  const groundMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(600,600),
-    new THREE.MeshStandardMaterial({ map: grass })
-  );
-  groundMesh.rotation.x = -Math.PI/2; groundMesh.receiveShadow = true;
-  scene.add(groundMesh);
-
-  const crateTex = texLoader.load(`${ASSETS}/textures/crate.gif`);
-  crateTex.colorSpace = THREE.SRGBColorSpace;
-  wallMat = new THREE.MeshStandardMaterial({ map: crateTex });
-  wallGeo = new THREE.BoxGeometry(4, 3, 4);
-
-  cheeseMat = new THREE.MeshStandardMaterial({ color: 0xffd21e, roughness: 0.5, emissive: 0x3a2a00 });
-  cheeseGeo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
-
-  mazeGroup = new THREE.Group(); scene.add(mazeGroup);
-
-  rat = new THREE.Group(); scene.add(rat);
-  ghostRat = new THREE.Group(); ghostRat.visible = false; scene.add(ghostRat);
-
-  // Load rat model
-  const loader = new GLTFLoader();
-  loader.load(MODEL_URL, (gltf) => {
-    const m = gltf.scene;
-    m.scale.setScalar(MODEL_SCALE); m.rotation.y = MODEL_FACE; m.position.y = MODEL_Y;
-    m.traverse(o => { if(o.isMesh){ o.castShadow=true; (Array.isArray(o.material)?o.material:[o.material]).forEach(mat=>{if(mat)mat.side=THREE.DoubleSide;}); }});
-    rat.add(m);
-  });
-
-  // Ghost rat model
-  loader.load(MODEL_URL, (gltf) => {
-    const m = gltf.scene;
-    m.scale.setScalar(MODEL_SCALE); m.rotation.y = MODEL_FACE; m.position.y = MODEL_Y;
-    m.traverse(o => {
-      if(o.isMesh){
-        const mats = Array.isArray(o.material) ? o.material.map(mat => { const g=mat.clone(); g.transparent=true; g.opacity=0.35; g.depthWrite=false; g.side=THREE.DoubleSide; return g; }) : (() => { o.material=o.material.clone(); o.material.transparent=true; o.material.opacity=0.35; o.material.depthWrite=false; o.material.side=THREE.DoubleSide; return o.material; })();
-        if(Array.isArray(mats)) o.material = mats;
-      }
-    });
-    ghostRat.add(m);
-  }, undefined, () => {
-    ghostRat.add(new THREE.Mesh(new THREE.SphereGeometry(0.6,12,12), new THREE.MeshStandardMaterial({color:0xaaddff,transparent:true,opacity:0.35,depthWrite:false})));
-  });
-
-  // Cheese model
-  loader.load(CHEESE_URL, (g) => {
-    cheeseTemplate = g.scene;
-    cheeseTemplate.traverse(o => {
-      if(o.isMesh && o.material){
-        (Array.isArray(o.material)?o.material:[o.material]).forEach(m => {
-          if(m.color) m.color.lerp(new THREE.Color(0xffffff), 0.18);
-          if('emissive' in m){ m.emissive = m.color.clone(); m.emissiveIntensity = CHEESE_GLOW; }
-          cheeseMats.push(m);
-        });
-      }
-    });
-    spawnCheese();
-  }, undefined, () => {});
-
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-
-  renderer.setAnimationLoop(animate);
-  lastRat = new THREE.Vector3();
-
-  cb();
-}
-
-// ============================================================
-// MAZE
-// ============================================================
-const CELL = 4;
-const WALL_H = 3;
-
-function makeRNG(seed) {
-  let s = seed >>> 0;
-  return function() {
-    s = (s + 0x6D2B79F5) | 0;
-    let t = Math.imul(s ^ (s>>>15), 1|s);
-    t = (t + Math.imul(t ^ (t>>>7), 61|t)) ^ t;
-    return ((t ^ (t>>>14)) >>> 0) / 4294967296;
-  };
-}
-
-const toWorldX = (c) => (c - (GW-1)/2) * CELL;
-const toWorldZ = (r) => (r - (GH-1)/2) * CELL;
-const toCol = (x) => Math.round(x/CELL + (GW-1)/2);
-const toRow = (z) => Math.round(z/CELL + (GH-1)/2);
-
-function isWall(x,z) {
-  const c=toCol(x), r=toRow(z);
-  if(r<0||r>=GH||c<0||c>=GW) return true;
-  return grid[r][c];
-}
-function blocked(x,z) {
-  const rad=1.1;
-  return isWall(x+rad,z+rad)||isWall(x-rad,z+rad)||isWall(x+rad,z-rad)||isWall(x-rad,z-rad);
-}
-
-function generateMaze() {
-  const L = LEVELS[levelKey];
-  CW = L.cw; CH = L.ch;
-  const rand = makeRNG(L.seed);
-  GW = 2*CW+1; GH = 2*CH+1;
-  grid = Array.from({length:GH}, ()=>Array(GW).fill(true));
-  const stack = [[1,1]]; grid[1][1] = false;
-  const dirs = [[0,-2],[0,2],[-2,0],[2,0]];
-  while(stack.length){
-    const [r,c] = stack[stack.length-1];
-    const opts = [];
-    for(const [dr,dc] of dirs){
-      const nr=r+dr, nc=c+dc;
-      if(nr>0&&nr<GH-1&&nc>0&&nc<GW-1&&grid[nr][nc]) opts.push([nr,nc,dr,dc]);
-    }
-    if(opts.length){
-      const [nr,nc,dr,dc] = opts[(rand()*opts.length)|0];
-      grid[r+dr/2][c+dc/2]=false; grid[nr][nc]=false;
-      stack.push([nr,nc]);
-    } else stack.pop();
-  }
-
-  scene.remove(mazeGroup);
-  mazeGroup = new THREE.Group();
-  for(let r=0;r<GH;r++) for(let c=0;c<GW;c++){
-    if(grid[r][c]){
-      const w = new THREE.Mesh(wallGeo, wallMat);
-      w.position.set(toWorldX(c), WALL_H/2, toWorldZ(r));
-      w.receiveShadow = true;
-      mazeGroup.add(w);
-    }
-  }
-  scene.add(mazeGroup);
-
-  startPos.set(toWorldX(1), 0, toWorldZ(1));
-  finishPos.set(toWorldX(GW-2), 0, toWorldZ(GH-2));
-
-  if(finishGate) scene.remove(finishGate);
-  finishGate = new THREE.Mesh(
-    new THREE.TorusGeometry(1.6, 0.3, 16, 40),
-    new THREE.MeshStandardMaterial({color:0x33ff88, emissive:0x0a5530, metalness:0.4})
-  );
-  finishGate.position.set(finishPos.x, 2, finishPos.z);
-  finishGate.rotation.x = Math.PI/2;
-  scene.add(finishGate);
-}
-
-// ============================================================
-// CHEESE
-// ============================================================
-let mpCheesePos = null; // for multiplayer single cheese
-let mpCheeseCollected = false;
-let mpCheeseObj = null;
-let mySpeedPenalty = 1.0;
-
-function spawnCheese() {
-  for(const c of cheeses) scene.remove(c);
-  cheeses.length = 0;
-
-  if(gameMode === 'multi') {
-    spawnMpCheese();
-    total = 1;
-    return;
-  }
-
-  // Solo cheese logic
-  const count = Math.min(LEVELS[levelKey].cheeseCount, 99);
-  if(levelKey === 'hard'){
-    const dist = Array.from({length:GH},()=>Array(GW).fill(-1));
-    const queue = [[1,1]]; dist[1][1]=0;
-    while(queue.length){
-      const [r,c]=queue.shift();
-      for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]){
-        const nr=r+dr,nc=c+dc;
-        if(nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&dist[nr][nc]===-1){
-          dist[nr][nc]=dist[r][c]+1; queue.push([nr,nc]);
-        }
-      }
-    }
-    const open=[];
-    for(let r=1;r<GH-1;r++) for(let c=1;c<GW-1;c++){
-      if(grid[r][c]||(r===1&&c===1)||(r===GH-2&&c===GW-2)||dist[r][c]===-1) continue;
-      let nbrs=0;
-      for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]) if(!grid[r+dr][c+dc]) nbrs++;
-      open.push({r,c,d:dist[r][c],dead:nbrs===1});
-    }
-    open.sort((a,b)=>b.d-a.d);
-    const step = Math.ceil(open.length/count);
-    const chosen=[];
-    for(let i=0;i<open.length&&chosen.length<count;i+=Math.max(1,step)) chosen.push(open[i]);
-    if(chosen.length<count) for(const cell of open){ if(chosen.length>=count) break; if(!chosen.includes(cell)) chosen.push(cell); }
-    for(const {r,c} of chosen) placeCheeseAt(r,c);
-  } else {
-    const open=[];
-    for(let r=1;r<GH-1;r++) for(let c=1;c<GW-1;c++)
-      if(!grid[r][c]&&!(r===1&&c===1)&&!(r===GH-2&&c===GW-2)) open.push([r,c]);
-    const crand=makeRNG(LEVELS[levelKey].seed+777);
-    for(let i=open.length-1;i>0;i--){ const j=(crand()*(i+1))|0; [open[i],open[j]]=[open[j],open[i]]; }
-    for(let i=0;i<Math.min(count,open.length);i++){ const [r,c]=open[i]; placeCheeseAt(r,c); }
-  }
-  total = cheeses.length;
-}
-
-function spawnMpCheese() {
-  // Place cheese at corner opposite to finish (finish=bottom-right, so cheese=top-left area)
-  // Find an open cell near top-right corner (opposite diagonally from finish at bottom-right)
-  // Start is top-left(1,1), finish is bottom-right(GH-2,GW-2)
-  // Cheese goes near top-right: row~1, col~GW-2
-  let cheeseR = 1, cheeseC = GW-2;
-  // Walk inward until we find an open cell
-  while(grid[cheeseR][cheeseC] && cheeseR < GH-1) {
-    cheeseR++;
-    if(grid[cheeseR][cheeseC]) cheeseC--;
-  }
-  mpCheesePos = { r: cheeseR, c: cheeseC };
-  mpCheeseCollected = false;
-  mySpeedPenalty = 1.0;
-  placeCheeseAt(cheeseR, cheeseC);
-  mpCheeseObj = cheeses[0];
-}
-
-function placeCheeseAt(r,c) {
-  let item;
-  if(cheeseTemplate){
-    item = cheeseTemplate.clone(true);
-    item.scale.setScalar(CHEESE_SCALE);
-    item.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
-  } else {
-    item = new THREE.Mesh(cheeseGeo, cheeseMat);
-    item.castShadow = true;
-  }
-  item.position.set(toWorldX(c), CHEESE_Y, toWorldZ(r));
-  item.userData.phase = Math.random()*Math.PI*2;
-  item.userData.baseY = CHEESE_Y;
-  scene.add(item); cheeses.push(item);
-}
-
-// ============================================================
-// SOLO GHOST
-// ============================================================
-function ghostKey(lvl) { return `${GHOST_KEY}_${lvl}`; }
-function loadGhost(lvl) {
-  try {
-    const raw = localStorage.getItem(ghostKey(lvl));
-    if(!raw){ ghostRecording=null; ghostBestTime=null; return; }
-    const data = JSON.parse(raw);
-    ghostRecording = data.frames; ghostBestTime = data.time;
-  } catch { ghostRecording=null; ghostBestTime=null; }
-}
-function saveGhost(lvl,time,frames) {
-  try { localStorage.setItem(ghostKey(lvl), JSON.stringify({time,frames})); } catch{}
-}
-function updateGhostHud() {
-  const el = document.getElementById('ghosthud');
-  if(!el) return;
-  if(!ghostOn){ el.textContent=''; return; }
-  el.textContent = ghostBestTime!==null ? `Ghost: ${ghostBestTime.toFixed(2)}s` : 'Ghost: no best yet';
-}
-function tickGhost(t) {
-  if(!ghostOn||!ghostRecording||ghostRecording.length<2){ ghostRat.visible=false; return; }
-  ghostRat.visible=true;
-  let lo=0, hi=ghostRecording.length-1;
-  while(lo<hi-1){ const mid=(lo+hi)>>1; if(ghostRecording[mid].t<=t) lo=mid; else hi=mid; }
-  const a=ghostRecording[lo], b=ghostRecording[hi];
-  const span=b.t-a.t, alpha=span>0?(t-a.t)/span:0;
-  ghostRat.position.x=a.x+(b.x-a.x)*alpha;
-  ghostRat.position.z=a.z+(b.z-a.z)*alpha;
-  ghostRat.position.y=0;
-  let dyaw=b.yaw-a.yaw;
-  if(dyaw>Math.PI) dyaw-=Math.PI*2;
-  if(dyaw<-Math.PI) dyaw+=Math.PI*2;
-  ghostRat.rotation.y=a.yaw+dyaw*alpha;
-}
-
-// ============================================================
-// SOLO HUD + CONTROLS
-// ============================================================
-const hud = document.getElementById('hud');
-const winEl = document.getElementById('win');
-const gateHint = document.getElementById('gatehint');
-function updateHUD() {
-  if(gameMode!=='solo') return;
-  hud.textContent = `🧀 ${collected}/${total}  |  ⏱ ${raceTime.toFixed(2)}s`;
-}
-
-function buildSoloControls() {
-  const ctrl = document.getElementById('controls');
-  ctrl.innerHTML = '';
-  const btns = [
-    ['btnEasy','Easy (1)'],['btnMedium','Medium (2)'],['btnHard','Hard (3)'],
-    ['btnBoard','Leaderboard (L)'],['btnFollow','Follow Cam (F): On'],
-    ['btnSaveCam','Save Cam'],['btnGhost','Ghost (G): On'],
-    ['btnNight','Night Mode (N): Off'],['btnMinimap','Minimap (M): On'],
-  ];
-  btns.forEach(([id,txt])=>{ const b=document.createElement('button'); b.id=id; b.textContent=txt; ctrl.appendChild(b); });
-
-  document.getElementById('btnGhost').onclick = (e) => {
-    ghostOn=!ghostOn; e.target.textContent='Ghost: '+(ghostOn?'On':'Off');
-    if(!ghostOn) ghostRat.visible=false; updateGhostHud();
-  };
-  document.getElementById('btnFollow').onclick = (e) => {
-    followCam=!followCam; e.target.textContent='Follow Cam: '+(followCam?'On':'Off');
-  };
-  document.getElementById('btnSaveCam').onclick = (e) => {
-    if(savedCamOffset){ savedCamOffset=null; e.target.textContent='Save Cam'; }
-    else { savedCamOffset=new THREE.Vector3().subVectors(camera.position, controls_3d.target); e.target.textContent='✅ Cam Saved'; }
-  };
-  document.getElementById('btnNight').onclick = (e) => {
-    nightMode=!nightMode; e.target.textContent='Night Mode: '+(nightMode?'On':'Off');
-    if(nightMode){ scene.background=new THREE.Color(0x000000); scene.environment=null; }
-    else { scene.background=skybox; scene.environment=skybox; }
-    cheeseMats.forEach(m=>{ m.emissiveIntensity=nightMode?0:CHEESE_GLOW; });
-  };
-  document.getElementById('btnMinimap').onclick = toggleMinimap;
-  document.getElementById('btnBoard').onclick = () => { renderBoard(levelKey); document.getElementById('board').style.display='block'; };
-  document.getElementById('boardClose').onclick = () => { document.getElementById('board').style.display='none'; };
-  document.getElementById('board').querySelectorAll('.lvlbtns button').forEach(b=>{ b.onclick=()=>renderBoard(b.dataset.lvl); });
-  document.getElementById('btnEasy').onclick   = ()=>{ setLevel('easy');   document.getElementById('board').style.display='none'; };
-  document.getElementById('btnMedium').onclick = ()=>{ setLevel('medium'); document.getElementById('board').style.display='none'; };
-  document.getElementById('btnHard').onclick   = ()=>{ setLevel('hard');   document.getElementById('board').style.display='none'; };
-}
-
-function setLevel(key) {
-  levelKey=key; LEVELS=SOLO_LEVELS;
-  const L=LEVELS[key]; CW=L.cw; CH=L.ch; par=L.par;
-  document.getElementById('level').textContent=`Level: ${L.label}  ·  Par: ${L.par}s`;
-  loadGhost(key); updateGhostHud(); resetRace();
-}
-
-// ============================================================
-// WIN SCREEN / SAVE SCORE
-// ============================================================
-const nameInput = document.getElementById('nameInput');
-const saveBtn = document.getElementById('saveBtn');
-const saveMsg = document.getElementById('saveMsg');
-if(myName){ nameInput.value=myName; nameInput.disabled=true; }
-
-async function addScore(name, time, lvl, frames) {
-  const docId = `${WEEKLY_SEED}_${lvl}_${name}`;
-  const ref = doc(db,'scores',docId);
-  const existing = await getDoc(ref);
-  if(existing.exists() && existing.data().time <= time) return;
-  const sampled = frames.filter((_,i)=>i%5===0);
-  await setDoc(ref,{ name, time, lvl, weekSeed: WEEKLY_SEED, date: DAILY_SEED, frames: sampled });
-}
-
-const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-async function renderBoard(lvl) {
-  const boardList = document.getElementById('boardList');
-  boardList.innerHTML = '<p style="color:#aaa">Loading…</p>';
-  const q = query(collection(db,'scores'), where('lvl','==',lvl), where('weekSeed','==',WEEKLY_SEED), orderBy('time'), limit(50));
-  let snap;
-  try { snap = await getDocs(q); } catch(e) { boardList.innerHTML='<p style="color:red">Error loading. Try again.</p>'; return; }
-  const label = SOLO_LEVELS[lvl].label;
-
-  // Group by date (day of week)
-  const byDay = {};
-  snap.forEach(d => {
-    const s = d.data();
-    if(!byDay[s.date] || s.time < byDay[s.date].time) byDay[s.date] = { ...s, docId: d.id };
-  });
-
-  // Build sorted day entries for this week
-  let html = `<p style="color:#9fe">${label} — this week's daily winners</p>`;
-  const weekDays = [];
-  for(let i=0;i<7;i++){
-    const d = new Date(monday); d.setDate(monday.getDate()+i);
-    const seed = d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
-    const dayName = DAY_NAMES[d.getDay()];
-    const entry = byDay[seed];
-    weekDays.push({ dayName, seed, entry, d });
-  }
-
-  html += '<table style="width:100%;border-collapse:collapse;margin-top:8px">';
-  html += '<tr style="color:#9fe;border-bottom:1px solid #333"><th style="text-align:left;padding:4px 8px">Day</th><th style="text-align:left;padding:4px 8px">Winner</th><th style="text-align:left;padding:4px 8px">Time</th><th></th></tr>';
-  for(const { dayName, seed, entry } of weekDays) {
-    const isToday = seed === DAILY_SEED;
-    const rowStyle = isToday ? 'background:#1a2a1a' : '';
-    if(entry) {
-      html += `<tr style="${rowStyle}">
-        <td style="padding:5px 8px;color:${isToday?'#ffd35a':'#aaa'}">${dayName}${isToday?' ★':''}</td>
-        <td style="padding:5px 8px">${entry.name}</td>
-        <td style="padding:5px 8px;color:#ffd35a">${entry.time.toFixed(2)}s</td>
-        <td style="padding:5px 8px"><button class="racebtn" data-id="${entry.docId}" style="font-size:11px;padding:2px 7px;background:#222;color:#9fe;border:1px solid #9fe;border-radius:4px;cursor:pointer">👻 Race</button></td>
-      </tr>`;
-    } else {
-      html += `<tr style="${rowStyle}">
-        <td style="padding:5px 8px;color:${isToday?'#ffd35a':'#555'}">${dayName}${isToday?' ★':''}</td>
-        <td style="padding:5px 8px;color:#555" colspan="3">${isToday?'Be the first!':'—'}</td>
-      </tr>`;
-    }
-  }
-  html += '</table>';
-  boardList.innerHTML = html;
-
-  boardList.querySelectorAll('.racebtn').forEach(btn => {
-    btn.onclick = async () => {
-      const snap = await getDoc(doc(db,'scores',btn.dataset.id));
-      if(!snap.exists()) return;
-      const data = snap.data();
-      ghostRecording = data.frames; ghostBestTime = data.time;
-      ghostOn = true;
-      const gbtn = document.getElementById('btnGhost');
-      if(gbtn) gbtn.textContent = 'Ghost (G): On';
-      updateGhostHud();
-      document.getElementById('board').style.display = 'none';
-      resetRace();
-      alert(`Racing ghost of ${data.name} (${data.time.toFixed(2)}s)!`);
-    };
-  });
-}
-
-saveBtn.onclick = async () => {
-  let nm = (nameInput.value||'Anon').trim()||'Anon';
-  localStorage.setItem('ratrace_username', nm);
-  myName = nm; nameInput.value=nm; nameInput.disabled=true;
-  saveBtn.disabled=true; saveMsg.textContent='Saving…';
-  await addScore(nm, raceTime, levelKey, currentRun);
-  saveMsg.textContent='Saved! 🧀  Open 🏆 Leaderboard to see standings.';
-};
-nameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); });
-
-// ============================================================
-// MINIMAP
-// ============================================================
-const miniCanvas = document.getElementById('minimap');
-const mctx = miniCanvas.getContext('2d');
-function toggleMinimap() {
-  minimapOn=!minimapOn;
-  miniCanvas.style.display=minimapOn?'block':'none';
-  const btn=document.getElementById('btnMinimap');
-  if(btn) btn.textContent='Minimap: '+(minimapOn?'On (M)':'Off (M)');
-}
-
-function drawMinimap() {
-  if(!grid) return;
-  const W=miniCanvas.width, H=miniCanvas.height;
-  mctx.clearRect(0,0,W,H);
-  mctx.save();
-  mctx.translate(W/2,H/2); mctx.rotate(-Math.PI/2); mctx.translate(-W/2,-H/2);
-  const s=Math.min(W/GW,H/GH);
-  const ox=(W-s*GW)/2, oy=(H-s*GH)/2;
-  for(let r=0;r<GH;r++) for(let c=0;c<GW;c++){
-    mctx.fillStyle=grid[r][c]?'#3a2f25':'#2e7d32';
-    mctx.fillRect(ox+c*s, oy+r*s, s+0.5, s+0.5);
-  }
-  const gateOpen = total>0 && collected>=total;
-  mctx.fillStyle=gateOpen?'#33ff88':'#ff5555';
-  mctx.fillRect(ox+toCol(finishPos.x)*s, oy+toRow(finishPos.z)*s, s, s);
-  mctx.fillStyle='#ffd21e';
-  for(const c of cheeses){
-    mctx.beginPath();
-    mctx.arc(ox+(c.position.x/CELL+(GW-1)/2)*s+s/2, oy+(c.position.z/CELL+(GH-1)/2)*s+s/2, Math.max(1.5,s*0.3), 0, Math.PI*2);
-    mctx.fill();
-  }
-
-  // Draw other MP players on minimap
-  if(gameMode==='multi'){
-    for(const [pid, pdata] of Object.entries(mpPlayers)){
-      if(pid===myPlayerId) continue;
-      const col=pdata.color||'#ff4444';
-      mctx.fillStyle=col;
-      mctx.beginPath();
-      mctx.arc(ox+(pdata.x/CELL+(GW-1)/2)*s+s/2, oy+(pdata.z/CELL+(GH-1)/2)*s+s/2, Math.max(2,s*0.4), 0, Math.PI*2);
-      mctx.fill();
-    }
-  }
-
-  // Player arrow
-  const rx=ox+(rat.position.x/CELL+(GW-1)/2)*s;
-  const ry=oy+(rat.position.z/CELL+(GH-1)/2)*s;
-  mctx.save(); mctx.translate(rx,ry); mctx.rotate(Math.PI-yaw);
-  mctx.fillStyle='#ffffff';
-  mctx.beginPath(); mctx.moveTo(0,-s); mctx.lineTo(-s*0.6,s*0.7); mctx.lineTo(s*0.6,s*0.7);
-  mctx.closePath(); mctx.fill(); mctx.restore();
-  mctx.restore();
-}
-
-// ============================================================
-// KEYBOARD
-// ============================================================
-const keys = {};
-window.addEventListener('keydown', (e) => {
-  if(e.target.tagName==='INPUT') return;
-  const k=e.key.toLowerCase();
-  keys[k]=true;
-  if(gameMode==='solo'){
-    if(k==='m') toggleMinimap();
-    if(k==='1'){ setLevel('easy');   document.getElementById('board').style.display='none'; }
-    if(k==='2'){ setLevel('medium'); document.getElementById('board').style.display='none'; }
-    if(k==='3'){ setLevel('hard');   document.getElementById('board').style.display='none'; }
-    if(k==='f'){ const b=document.getElementById('btnFollow'); if(b) b.click(); }
-    if(k==='g'){ const b=document.getElementById('btnGhost'); if(b) b.click(); }
-    if(k==='n'){ const b=document.getElementById('btnNight'); if(b) b.click(); }
-    if(k==='l'){
-      const board=document.getElementById('board');
-      if(board.style.display==='block') board.style.display='none';
-      else { renderBoard(levelKey); board.style.display='block'; }
-    }
-  }
-  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
-});
-window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
-
-// ============================================================
-// RESET
-// ============================================================
-function resetRace() {
-  generateMaze();
-  rat.position.copy(startPos);
-  rat.rotation.y = Math.PI/2;
-  speed=0; yaw=Math.PI/2;
-  collected=0; raceTime=0; finished=false; started=false;
-  currentRun=[];
-  ghostRat.visible=false;
-  winEl.style.display='none';
-  if(lastRat) lastRat.copy(rat.position);
-  camera.position.set(startPos.x, 18, startPos.z+22);
-  controls_3d.target.set(startPos.x, 1.5, startPos.z);
-  controls_3d.update();
-  updateHUD();
-  if(gameMode==='solo') updateGhostHud();
-  spawnCheese();
-}
-
-// ============================================================
-// MULTIPLAYER
-// ============================================================
-const PLAYER_COLORS = ['#ff4444','#44aaff','#ff44ff','#ffaa00','#00ffaa','#ff8844','#44ffff','#ffff44','#aa44ff','#44ff44'];
-let myPlayerId = null;
-let myRoom = null;
-let myColor = PLAYER_COLORS[0];
-let isHost = false;
-let mpPlayers = {}; // pid -> {x,z,yaw,name,color,finished,hasCheese}
-let mpOtherRats = {}; // pid -> THREE.Group
-let mpLevelKey = 'easy';
-let mpGameStarted = false;
-let mpRaceTime = 0;
-let mpFinished = false;
-let mpCheeseWinner = null;
-let mpMazeWinner = null;
-let mpListeners = [];
-
-function genRoomCode() {
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code='';
-  for(let i=0;i<4;i++) code+=chars[(Math.random()*chars.length)|0];
-  return code;
-}
-
-function askName(cb) {
-  if(myName){ cb(myName); return; }
-  const nm = prompt('Enter your name (max 14 chars):','');
-  if(!nm){ cb('Anon'); return; }
-  myName = nm.trim().slice(0,14)||'Anon';
-  localStorage.setItem('ratrace_username', myName);
-  cb(myName);
-}
+document.getElementById('btnSolo').onclick = () => { showScreen('game'); startSolo(document.getElementById('gameScreen')); };
+document.getElementById('backBtn').onclick = () => { leaveRoom(); showScreen('start'); };
+document.getElementById('btnMulti').onclick = () => showScreen('mp');
+document.getElementById('mpBack').onclick   = () => showScreen('start');
 
 document.getElementById('btnCreateRoom').onclick = () => {
-  askName((name) => {
-    const code = genRoomCode();
-    myPlayerId = 'p_'+Math.random().toString(36).slice(2,8);
-    myColor = PLAYER_COLORS[0];
-    isHost = true;
-    myRoom = code;
-    joinRoomData(code, name, true);
-  });
+  createRoom((code,hosting) => setupLobby(code,hosting));
 };
-
 document.getElementById('btnJoinRoom').onclick = () => {
-  const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
-  if(code.length!==4){ alert('Enter a 4-letter room code'); return; }
-  askName((name) => {
-    myPlayerId = 'p_'+Math.random().toString(36).slice(2,8);
-    isHost = false;
-    myRoom = code;
-    joinRoomData(code, name, false);
-  });
+  const code=document.getElementById('roomCodeInput').value.trim().toUpperCase();
+  if(code.length!==4){alert('Enter a 4-letter room code');return;}
+  joinRoom(code,(code,hosting)=>setupLobby(code,hosting),(err)=>alert(err));
 };
 
-async function joinRoomData(code, name, hosting) {
-  const roomRef = ref(rtdb, `rooms/${code}`);
-  const snap = await get(roomRef);
-  const existing = snap.val();
-
-  const playerCount = existing ? Object.keys(existing.players||{}).length : 0;
-  if(!hosting && playerCount>=10){ alert('Room is full!'); return; }
-  if(!hosting && !existing){ alert('Room not found!'); return; }
-
-  // Pick color based on join order
-  const usedColors = existing ? Object.values(existing.players||{}).map(p=>p.color) : [];
-  myColor = PLAYER_COLORS.find(c=>!usedColors.includes(c)) || PLAYER_COLORS[playerCount%PLAYER_COLORS.length];
-
-  // Write myself to room
-  await update(ref(rtdb,`rooms/${code}/players/${myPlayerId}`), {
-    name, color: myColor, x:0, z:0, yaw:0, finished:false, hasCheese:false, joinedAt: Date.now()
-  });
-  if(hosting) {
-    await update(ref(rtdb,`rooms/${code}`), { host: myPlayerId, level: mpLevelKey, started: false });
-  }
-
-  // Clean up when I leave
-  window.addEventListener('beforeunload', ()=>leaveRoom());
-
-  showLobby(code, hosting);
-}
-
-function showLobby(code, hosting) {
+let currentLevel='easy';
+function setupLobby(code,hosting) {
   showScreen('lobby');
-  document.getElementById('roomCodeDisplay').textContent = code;
-
-  const startBtn = document.getElementById('startGameBtn');
-  const waitMsg = document.getElementById('waitingMsg');
-  if(hosting){ startBtn.style.display='block'; waitMsg.style.display='none'; }
-  else { startBtn.style.display='none'; waitMsg.style.display='block'; }
-
-  // MP level select (host only)
-  const lvlBtns = document.getElementById('mpLevelSelect');
-  lvlBtns.style.display = hosting ? 'flex' : 'none';
-  lvlBtns.querySelectorAll('button').forEach(b => {
-    b.onclick = () => {
-      if(!isHost) return;
-      mpLevelKey = b.dataset.lvl;
-      lvlBtns.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+  document.getElementById('roomCodeDisplay').textContent=code;
+  const startBtn=document.getElementById('startGameBtn');
+  const waitMsg=document.getElementById('waitingMsg');
+  const lvlSelect=document.getElementById('mpLevelSelect');
+  startBtn.style.display=hosting?'block':'none';
+  waitMsg.style.display=hosting?'none':'block';
+  lvlSelect.style.display=hosting?'flex':'none';
+  lvlSelect.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      if(!hosting)return;
+      currentLevel=b.dataset.lvl;
+      lvlSelect.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
       b.classList.add('active');
-      update(ref(rtdb,`rooms/${code}`),{ level: mpLevelKey });
+      setRoomLevel(code,currentLevel);
     };
   });
-
-  // Listen for players
-  const playersRef = ref(rtdb,`rooms/${code}/players`);
-  const unsubPlayers = onValue(playersRef, snap => {
-    const players = snap.val()||{};
-    const list = document.getElementById('playerList');
-    list.innerHTML = '';
-    Object.entries(players).forEach(([pid,p]) => {
-      const li = document.createElement('li');
-      li.style.color = p.color||'#fff';
-      li.textContent = (pid===myPlayerId?'★ ':'')+p.name+(pid===myRoom?'  [host]':'');
-      list.appendChild(li);
-    });
-  });
-  mpListeners.push(()=>off(playersRef, 'value'));
-
-  // Listen for room changes (level, started)
-  const roomRef = ref(rtdb,`rooms/${code}`);
-  const unsubRoom = onValue(roomRef, snap => {
-    const data = snap.val();
-    if(!data) return;
-    mpLevelKey = data.level||'easy';
-    if(data.started && !mpGameStarted) startMpGame();
-  });
-  mpListeners.push(()=>off(roomRef,'value'));
-
-  // Start button
-  startBtn.onclick = async () => {
-    await update(ref(rtdb,`rooms/${code}`),{ started: true, startTime: Date.now()+3500 });
-  };
-
-  document.getElementById('lobbyBack').onclick = () => { leaveRoom(); showScreen('start'); };
-}
-
-function leaveRoom() {
-  if(myRoom && myPlayerId){
-    remove(ref(rtdb,`rooms/${myRoom}/players/${myPlayerId}`));
-    myRoom=null; myPlayerId=null;
-  }
-  mpListeners.forEach(fn=>fn()); mpListeners=[];
-  mpGameStarted=false;
-  // Remove other rats from scene
-  if(scene) Object.values(mpOtherRats).forEach(r=>scene.remove(r));
-  mpOtherRats={}; mpPlayers={};
-}
-
-function startMpGame() {
-  mpGameStarted=true;
-  gameMode='multi';
-  LEVELS=MP_LEVELS;
-  levelKey=mpLevelKey;
-
-  showScreen('game');
-  document.getElementById('info').style.display='none';
-  document.getElementById('mpHud').style.display='block';
-  document.getElementById('controls').innerHTML='';
-
-  initEngine(() => {
-    resetRace();
-    // Countdown
-    const cd = document.getElementById('countdown');
-    cd.style.display='block';
-    let count=3;
-    cd.textContent=count;
-    const iv = setInterval(()=>{
-      count--;
-      if(count>0){ cd.textContent=count; }
-      else if(count===0){ cd.textContent='GO!'; }
-      else { cd.style.display='none'; clearInterval(iv); mpRaceStart(); }
-    },1000);
-  });
-
-  // Listen for other players
-  const playersRef = ref(rtdb,`rooms/${myRoom}/players`);
-  const unsub = onValue(playersRef, snap=>{
-    const players=snap.val()||{};
-    mpPlayers={};
-    Object.entries(players).forEach(([pid,p])=>{
-      if(pid===myPlayerId) return;
-      mpPlayers[pid]=p;
-      // Create rat mesh for this player if needed
-      if(!mpOtherRats[pid] && scene){
-        const g=new THREE.Group();
-        new GLTFLoader().load(MODEL_URL,(gltf)=>{
-          const m=gltf.scene; m.scale.setScalar(MODEL_SCALE); m.rotation.y=MODEL_FACE; m.position.y=MODEL_Y;
-          m.traverse(o=>{
-            if(o.isMesh){
-              const mats=Array.isArray(o.material)?o.material:[o.material];
-              mats.forEach(mat=>{ if(mat){ mat=mat.clone(); mat.color=new THREE.Color(p.color||'#ff4444'); o.material=mat; } });
-              o.castShadow=true;
-            }
-          });
-          g.add(m);
-        },undefined,()=>{
-          const fallback=new THREE.Mesh(new THREE.SphereGeometry(0.8,12,12),new THREE.MeshStandardMaterial({color:new THREE.Color(p.color||'#ff4444')}));
-          g.add(fallback);
-        });
-        scene.add(g);
-        mpOtherRats[pid]=g;
-      }
-      // Update position
-      if(mpOtherRats[pid]){
-        mpOtherRats[pid].position.set(p.x||0, 0, p.z||0);
-        mpOtherRats[pid].rotation.y=p.yaw||0;
-      }
-      // Cheese winner notification
-      if(p.hasCheese && !mpCheeseWinner){
-        mpCheeseWinner=p.name;
-        showCheeseNotif(p.name);
-        mySpeedPenalty=0.98; // slow me down 2%
-      }
-      // Maze winner
-      if(p.finished && !mpMazeWinner){
-        mpMazeWinner=p.name;
-        showMpStatus(`🏁 ${p.name} escaped the maze first!`);
-      }
-    });
-    // Remove rats for players who left
-    Object.keys(mpOtherRats).forEach(pid=>{
-      if(!players[pid]){ scene.remove(mpOtherRats[pid]); delete mpOtherRats[pid]; }
-    });
-  });
-  mpListeners.push(()=>off(playersRef,'value'));
-}
-
-function mpRaceStart() {
-  mpRaceTime=0; mpFinished=false; mpCheeseWinner=null; mpMazeWinner=null;
-  started=true;
-}
-
-function showCheeseNotif(name) {
-  const el=document.getElementById('cheeseNotif');
-  el.innerHTML=`🧀 ${name} CUT THE CHEESE!<br><small>PLAYERS AFFECTED BY THE STANK!</small>`;
-  el.style.display='block';
-  setTimeout(()=>el.style.display='none', 4000);
-}
-
-function showMpStatus(msg) {
-  document.getElementById('mpStatus').textContent=msg;
-}
-
-// ============================================================
-// ANIMATION LOOP
-// ============================================================
-const dayFog=new THREE.Color(0x9bc4e2), nightFog=new THREE.Color(0x0a0f25), tmpC=new THREE.Color();
-let sunAngle=Math.PI/2.3;
-
-function animate() {
-  const rawDt=Math.min(clock.getDelta(),0.1);
-  accumulator+=rawDt;
-  if(accumulator<FIXED_DT){
-    controls_3d.update();
-    renderer.render(scene,camera);
-    return;
-  }
-  accumulator-=FIXED_DT;
-  const dt=FIXED_DT;
-  const t=clock.getElapsedTime();
-
-  const accel=28, friction=20, turnRate=2.6;
-  const maxSpeed=10 * (gameMode==='multi'?mySpeedPenalty:1);
-
-  if(keys['w']||keys['arrowup']) speed+=accel*dt;
-  else if(keys['s']||keys['arrowdown']) speed-=accel*dt;
-  else speed-=Math.sign(speed)*Math.min(Math.abs(speed),friction*dt);
-  speed=THREE.MathUtils.clamp(speed,-7,maxSpeed);
-
-  if(Math.abs(speed)>0.3){
-    const turn=(keys['a']||keys['arrowleft']?1:0)-(keys['d']||keys['arrowright']?1:0);
-    yaw+=turn*turnRate*dt*Math.sign(speed===0?1:speed);
-  } else {
-    yaw+=((keys['a']||keys['arrowleft']?1:0)-(keys['d']||keys['arrowright']?1:0))*turnRate*0.6*dt;
-  }
-  rat.rotation.y=yaw;
-
-  fwd.set(Math.sin(yaw),0,Math.cos(yaw));
-  const dx=fwd.x*speed*dt, dz=fwd.z*speed*dt;
-  if(!blocked(rat.position.x+dx,rat.position.z)) rat.position.x+=dx; else speed*=0.9;
-  if(!blocked(rat.position.x,rat.position.z+dz)) rat.position.z+=dz; else speed*=0.9;
-  rat.position.y=Math.abs(speed)>0.5?Math.abs(Math.sin(t*14))*0.12:0;
-
-  if(!started && Math.abs(speed)>0.5) started=true;
-
-  if(gameMode==='solo'){
-    if(started&&!finished) raceTime+=dt;
-    if(ghostOn&&started&&!finished) currentRun.push({t:raceTime,x:rat.position.x,z:rat.position.z,yaw});
-    if(ghostOn&&started) tickGhost(raceTime);
-  } else {
-    if(started&&!mpFinished) mpRaceTime+=dt;
-    document.getElementById('mpTimer').textContent=`⏱ ${mpRaceTime.toFixed(2)}s`;
-    // Broadcast position
-    if(myRoom&&myPlayerId&&started){
-      update(ref(rtdb,`rooms/${myRoom}/players/${myPlayerId}`),{
-        x:rat.position.x, z:rat.position.z, yaw, finished:mpFinished
+  let gameStarted=false;
+  listenLobby(code,
+    (players)=>{
+      const list=document.getElementById('playerList');
+      list.innerHTML='';
+      Object.entries(players).forEach(([pid,p])=>{
+        const li=document.createElement('li');
+        li.style.color=p.color||'#fff';
+        li.textContent=p.name;
+        list.appendChild(li);
       });
+    },
+    (room)=>{
+      if(room.level) currentLevel=room.level;
+      if(room.started&&!gameStarted){gameStarted=true;showScreen('game');startMpGame(code,currentLevel,document.getElementById('gameScreen'));}
     }
-  }
-
-  // Camera
-  if(followCam){
-    const camDist=14, camHeight=10;
-    const camX=rat.position.x-Math.sin(yaw)*camDist;
-    const camZ=rat.position.z-Math.cos(yaw)*camDist;
-    camera.position.lerp(new THREE.Vector3(camX,camHeight,camZ),0.08);
-  } else {
-    if(savedCamOffset){
-      camera.position.set(controls_3d.target.x+savedCamOffset.x, controls_3d.target.y+savedCamOffset.y, controls_3d.target.z+savedCamOffset.z);
-    } else {
-      const mdx=rat.position.x-lastRat.x, mdz=rat.position.z-lastRat.z;
-      camera.position.x+=mdx; camera.position.z+=mdz;
-    }
-  }
-  controls_3d.target.set(rat.position.x,1.5,rat.position.z);
-  lastRat.copy(rat.position);
-
-  spot.position.set(rat.position.x,16,rat.position.z);
-  spot.target.position.copy(rat.position);
-
-  // Cheese collection
-  for(let i=cheeses.length-1;i>=0;i--){
-    const c=cheeses[i];
-    c.rotation.y+=dt*1.6;
-    c.position.y=c.userData.baseY+Math.sin(t*2+c.userData.phase)*0.2;
-    if(c.position.distanceTo(rat.position)<1.6){
-      scene.remove(c); cheeses.splice(i,1); collected+=1;
-      if(gameMode==='multi' && !mpCheeseCollected){
-        mpCheeseCollected=true;
-        mpCheeseWinner=myName;
-        showCheeseNotif(myName+' (you)');
-        // Others get slowed — broadcast
-        update(ref(rtdb,`rooms/${myRoom}/players/${myPlayerId}`),{ hasCheese:true });
-        document.getElementById('mpStatus').textContent='🧀 You cut the cheese! Others are affected!';
-      }
-    }
-  }
-
-  // Gate logic (solo)
-  if(gameMode==='solo'){
-    const gateOpen=total>0&&collected>=total;
-    if(finishGate){
-      finishGate.rotation.z+=dt*1.2;
-      finishGate.material.color.set(gateOpen?0x33ff88:0xff5555);
-      finishGate.material.emissive.set(gateOpen?0x0a5530:0x551414);
-    }
-    const nearGate=rat.position.distanceTo(finishPos)<2.4;
-    gateHint.style.display=(nearGate&&!gateOpen&&!finished)?'block':'none';
-    if(!finished&&nearGate&&gateOpen){
-      finished=true;
-      ghostRat.visible=false;
-      gateHint.style.display='none';
-      if(ghostOn&&currentRun.length>0){
-        if(ghostBestTime===null||raceTime<ghostBestTime){
-          ghostBestTime=raceTime;
-          ghostRecording=currentRun.slice();
-          saveGhost(levelKey,ghostBestTime,ghostRecording);
-        }
-      }
-      updateGhostHud();
-      const beat=raceTime<=par;
-      const newBest=ghostBestTime!==null&&raceTime===ghostBestTime;
-      document.getElementById('winMsg').innerHTML=
-        `🏁 Finished!<br><span style="font-size:15px">${SOLO_LEVELS[levelKey].label} &nbsp;·&nbsp; Time: ${raceTime.toFixed(2)}s &nbsp;·&nbsp; Par: ${par}s<br>`+
-        (newBest?'NEW BEST TIME!! Ghost updated. ':'')+
-        (beat?'You beat the par time!':'⏱ Just over par — try again!')+'</span>';
-      nameInput.value=myName||''; nameInput.disabled=!!myName;
-      saveBtn.disabled=false; saveMsg.textContent='';
-      winEl.style.display='block';
-    }
-    updateHUD();
-  }
-
-  // MP finish
-  if(gameMode==='multi'){
-    if(finishGate){
-      finishGate.rotation.z+=dt*1.2;
-      finishGate.material.color.set(0x33ff88);
-      finishGate.material.emissive.set(0x0a5530);
-    }
-    if(!mpFinished && rat.position.distanceTo(finishPos)<2.4){
-      mpFinished=true;
-      update(ref(rtdb,`rooms/${myRoom}/players/${myPlayerId}`),{ finished:true });
-      if(!mpMazeWinner){
-        mpMazeWinner=myName;
-        showMpStatus(`🏁 You escaped first! Time: ${mpRaceTime.toFixed(2)}s`);
-      } else {
-        showMpStatus(`🏁 You finished! Time: ${mpRaceTime.toFixed(2)}s`);
-      }
-    }
-  }
-
-  if(minimapOn) drawMinimap();
-
-  // Lighting
-  if(nightMode){
-    sun.intensity=0; ambient.intensity=0.05; hemi.intensity=0.03;
-    spot.angle=Math.PI/10; spot.penumbra=0.4; spot.intensity=420;
-    pointLamp.color.set(0xffe2b0); pointLamp.intensity=18; pointLamp.distance=14;
-    pointLamp.position.set(rat.position.x,3,rat.position.z);
-    scene.fog.color.set(0x000000); scene.fog.near=6; scene.fog.far=30;
-  } else {
-    scene.fog.near=200; scene.fog.far=900;
-    spot.angle=Math.PI/6; spot.penumbra=0.4; spot.distance=70;
-    pointLamp.color.set(0xffaa55);
-    if(dayNightOn) sunAngle+=dt*0.12;
-    sun.position.set(Math.cos(sunAngle)*60, Math.max(8,Math.sin(sunAngle)*60), 25);
-    sun.target.position.set(rat.position.x,0,rat.position.z);
-    const daylight=Math.max(0,Math.sin(sunAngle)), night=1-daylight;
-    sun.intensity=0.6+daylight*2.4;
-    sun.color.setHSL(0.09+daylight*0.04,1.0,0.45+daylight*0.2);
-    ambient.intensity=0.25+daylight*0.25;
-    hemi.intensity=0.3+daylight*0.5;
-    pointLamp.intensity=night*50; pointLamp.position.set(rat.position.x,12,rat.position.z);
-    spot.intensity=50+night*70;
-    tmpC.copy(nightFog).lerp(dayFog,daylight); scene.fog.color.copy(tmpC);
-  }
-
-  controls_3d.update();
-  renderer.render(scene,camera);
+  );
+  startBtn.onclick=async()=>{
+    await triggerStart(code);
+    if(!gameStarted){gameStarted=true;showScreen('game');startMpGame(code,currentLevel,document.getElementById('gameScreen'));}
+  };
+  document.getElementById('lobbyBack').onclick=()=>{leaveRoom();showScreen('start');};
 }
-
 </script>
 </body>
 </html>
