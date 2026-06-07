@@ -57,6 +57,12 @@ let _mpAcc         = 0;
 let mpStarted      = false;
 let mpGameScreen   = null;
 
+let currentRound = 1;
+const TOTAL_ROUNDS = 3;
+let roundPoints = {}; // pid -> total points across rounds
+let roundResults = []; // array of round result objects
+let numPlayers = 1;
+
 // ── Helpers ───────────────────────────────────────────────────
 function genRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -73,6 +79,7 @@ function askName(cb) {
   input.value = current;
   modal.style.display = 'flex';
   input.focus();
+
   const done = () => {
     const nm = input.value.trim().slice(0,14) || 'Anon';
     myName = nm;
@@ -80,8 +87,23 @@ function askName(cb) {
     modal.style.display = 'none';
     cb(nm);
   };
+  const cancel = () => {
+    modal.style.display = 'none';
+  };
+
   btn.onclick = done;
-  input.onkeydown = (e) => { if (e.key === 'Enter') done(); };
+  input.onkeydown = (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') cancel(); };
+
+  // Add cancel button if not already there
+  let cancelBtn = document.getElementById('nameModalCancel');
+  if (!cancelBtn) {
+    cancelBtn = document.createElement('button');
+    cancelBtn.id = 'nameModalCancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'margin-top:8px;font-family:monospace;font-size:14px;padding:8px 24px;border-radius:6px;border:1px solid #555;background:none;color:#aaa;cursor:pointer;width:100%';
+    btn.parentNode.appendChild(cancelBtn);
+  }
+  document.getElementById('nameModalCancel').onclick = cancel;
 }
 
 function showCheeseNotif(name) {
@@ -97,35 +119,114 @@ function showMpStatus(msg) {
 
 // ── End of game leaderboard ───────────────────────────────────
 function showMpResults() {
-  const sorted = Object.values(mpResults)
-    .filter(p => p.finished)
-    .sort((a,b) => a.time - b.time);
+  // Tally points for this round
+  const allPlayers = { ...mpResults };
+  // Add DNF players from mpPlayers
+  Object.entries(mpPlayers).forEach(([pid, p]) => {
+    if (!allPlayers[pid]) allPlayers[pid] = { pid, name:p.name, time:0, hasCheese:p.hasCheese||false, finished:false };
+  });
+  if (!allPlayers[myPlayerId]) allPlayers[myPlayerId] = { pid:myPlayerId, name:myName, time:mpRaceTime, hasCheese:mpCheeseCollected, finished:mpFinished };
 
-  const dnf = Object.values(mpResults).filter(p => !p.finished);
+  const finished = Object.values(allPlayers).filter(p=>p.finished).sort((a,b)=>a.time-b.time);
+  const dnf      = Object.values(allPlayers).filter(p=>!p.finished);
+  const cheeseBonus = Math.ceil(numPlayers / 2);
 
-  let html = '<h2 style="color:#ffd35a;margin-bottom:16px">🏁 Race Results</h2>';
-  html += '<table style="width:100%;border-collapse:collapse">';
-  html += '<tr style="color:#9fe;border-bottom:1px solid #333"><th style="padding:6px 10px;text-align:left">#</th><th style="text-align:left;padding:6px 10px">Player</th><th style="text-align:left;padding:6px 10px">Time</th><th style="text-align:left;padding:6px 10px">🧀</th></tr>';
-
-  sorted.forEach((p, i) => {
-    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
-    html += `<tr style="${i===0?'background:#1a2a10':''}">
-      <td style="padding:6px 10px;font-size:18px">${medal}</td>
-      <td style="padding:6px 10px">${p.name}${p.pid===myPlayerId?' (you)':''}</td>
-      <td style="padding:6px 10px;color:#ffd35a">${p.time.toFixed(2)}s</td>
-      <td style="padding:6px 10px">${p.hasCheese?'✅ Cut it!':''}</td>
-    </tr>`;
+  // Award points
+  finished.forEach((p, i) => {
+    const pts = (numPlayers - i);
+    roundPoints[p.pid] = (roundPoints[p.pid]||0) + pts;
+    if (p.hasCheese) roundPoints[p.pid] += cheeseBonus;
+  });
+  dnf.forEach(p => {
+    roundPoints[p.pid] = roundPoints[p.pid] || 0;
+    if (p.hasCheese) roundPoints[p.pid] += cheeseBonus;
   });
 
+  roundResults.push({ finished, dnf, cheeseBonus });
+
+  const isFinal = currentRound >= TOTAL_ROUNDS;
+  const modal   = document.getElementById('mpResultsModal');
+  const list    = document.getElementById('mpResultsList');
+
+  // Sort by total points for standings
+  const standings = Object.entries(roundPoints)
+    .map(([pid, pts]) => ({ pid, pts, name: allPlayers[pid]?.name || pid }))
+    .sort((a,b) => b.pts - a.pts);
+
+  let html = `<h2 style="color:#ffd35a;margin-bottom:4px">${isFinal ? '🏆 Final Results' : `Round ${currentRound} Results`}</h2>`;
+  html += `<p style="color:#aaa;font-size:12px;margin-bottom:16px">${isFinal ? 'Game over!' : `Round ${currentRound} of ${TOTAL_ROUNDS}`}</p>`;
+
+  // Round finishers
+  html += `<p style="color:#9fe;margin-bottom:6px">This round</p>`;
+  html += '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">';
+  finished.forEach((p, i) => {
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+    const pts   = numPlayers - i;
+    html += `<tr>
+      <td style="padding:4px 8px">${medal}</td>
+      <td style="padding:4px 8px">${p.name}${p.pid===myPlayerId?' (you)':''}</td>
+      <td style="padding:4px 8px;color:#ffd35a">${p.time.toFixed(2)}s</td>
+      <td style="padding:4px 8px;color:#9fe">+${pts}pts${p.hasCheese?` +${cheeseBonus}🧀`:''}</td>
+    </tr>`;
+  });
   if (dnf.length) {
-    html += `<tr><td colspan="4" style="padding:8px 10px;color:#555;font-size:12px">Did not finish: ${dnf.map(p=>p.name).join(', ')}</td></tr>`;
+    dnf.forEach(p => {
+      html += `<tr><td style="padding:4px 8px;color:#555">DNF</td><td style="padding:4px 8px;color:#555">${p.name}</td><td></td><td style="padding:4px 8px;color:#9fe">${p.hasCheese?`+${cheeseBonus}🧀`:'0pts'}</td></tr>`;
+    });
   }
   html += '</table>';
-  html += `<button onclick="document.getElementById('mpResultsModal').style.display='none'" style="margin-top:16px;font-family:monospace;font-size:14px;padding:10px 20px;border-radius:8px;border:2px solid #ffd35a;background:#2a2410;color:#ffd35a;cursor:pointer">Close</button>`;
 
-  const modal = document.getElementById('mpResultsModal');
-  document.getElementById('mpResultsList').innerHTML = html;
+  // Overall standings
+  html += '<p style="color:#9fe;margin-bottom:6px">Overall Standings</p>';
+  html += '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">';
+  standings.forEach((p, i) => {
+    const isMe = p.pid === myPlayerId;
+    html += `<tr style="${isMe?'background:#1a2a10':''}">
+      <td style="padding:4px 8px">${i+1}.</td>
+      <td style="padding:4px 8px">${p.name}${isMe?' (you)':''}</td>
+      <td style="padding:4px 8px;color:#ffd35a;font-weight:bold">${p.pts} pts</td>
+    </tr>`;
+  });
+  html += '</table>';
+
+  if (isFinal) {
+    const winner = standings[0];
+    html += `<p style="font-size:20px;color:#ffd35a;margin-bottom:16px">🎉 ${winner.name} wins!</p>`;
+    html += `<button onclick="document.getElementById('mpResultsModal').style.display='none'" style="font-family:monospace;font-size:14px;padding:10px 20px;border-radius:8px;border:2px solid #555;background:#222;color:#fff;cursor:pointer">Close</button>`;
+  } else if (isHost) {
+    html += `<button id="nextRoundBtn" style="font-family:monospace;font-size:16px;padding:12px 28px;border-radius:8px;border:2px solid #ffd35a;background:#2a2410;color:#ffd35a;cursor:pointer">▶ Start Round ${currentRound+1}</button>`;
+  } else {
+    html += `<p style="color:#aaa;font-size:13px">Waiting for host to start next round…</p>`;
+  }
+
+  list.innerHTML = html;
   modal.style.display = 'block';
+
+  if (!isFinal && isHost) {
+    document.getElementById('nextRoundBtn').onclick = async () => {
+      currentRound++;
+      await update(ref(rtdb, `rooms/${myRoom}`), { currentRound, roundStarted: Date.now() });
+      document.getElementById('mpResultsModal').style.display = 'none';
+      Object.values(mpOtherRats).forEach(r => scene.remove(r));
+      mpOtherRats = {};
+      _startRound(myRoom, mpLevelKey, mpGameScreen);
+    };
+  }
+
+  // Non-hosts listen for next round
+  if (!isFinal && !isHost) {
+    const nextRef = ref(rtdb, `rooms/${myRoom}/currentRound`);
+    onValue(nextRef, snap => {
+      if (snap.val() > currentRound) {
+        currentRound = snap.val();
+        off(nextRef, 'value');
+        modal.style.display = 'none';
+        Object.values(mpOtherRats).forEach(r => scene.remove(r));
+        mpOtherRats = {};
+        _startRound(myRoom, mpLevelKey, mpGameScreen);
+      }
+    });
+  }
 }
 
 // ── Join / Leave ──────────────────────────────────────────────
@@ -203,18 +304,40 @@ export async function triggerStart(code) {
 }
 
 // ── Start game ────────────────────────────────────────────────
-export function startMpGame(code, lvlKey, gameScreen) {
+export function startMpGame(code, lvlKey, gameScreen, playerCount) {
   mpGameScreen  = gameScreen;
   mpLevelKey    = lvlKey;
   mpGameStarted = true;
+  numPlayers    = playerCount || 2;
+  currentRound  = 1;
+  roundPoints   = {};
+  roundResults  = [];
+
+  _startRound(code, lvlKey, gameScreen);
+}
+
+function _startRound(code, lvlKey, gameScreen) {
+  mpRaceTime       = 0;
+  mpFinished       = false;
+  mpCheeseCollected= false;
+  mySpeedPenalty   = 1.0;
+  mpCheeseWinner   = null;
+  mpMazeWinner     = null;
+  mpResults        = {};
+  _mpAcc           = 0;
+  mpStarted        = false;
 
   document.getElementById('info').style.display  = 'none';
   document.getElementById('mpHud').style.display = 'block';
   document.getElementById('controls').innerHTML  = '';
+  document.getElementById('mpResultsModal').style.display = 'none';
+
+  // Different seed each round
+  const L = MP_LEVELS[mpLevelKey];
+  const roundSeed = L.seed + (currentRound * 100);
 
   initEngine(gameScreen, () => {
-    const L = MP_LEVELS[mpLevelKey];
-    generateMaze(L.cw, L.ch, L.seed);
+    generateMaze(L.cw, L.ch, roundSeed);
     spawnMpCheese();
     rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
     setSpeed(0); setYaw(Math.PI/2);
@@ -223,34 +346,88 @@ export function startMpGame(code, lvlKey, gameScreen) {
     orbitControls.target.set(startPos.x, 1.5, startPos.z);
     orbitControls.update();
 
-    onCheeseTemplateLoaded(() => spawnMpCheese());
+    if (cheeseTemplate) spawnMpCheese();
+    else onCheeseTemplateLoaded(() => spawnMpCheese());
 
+    document.getElementById('mpStatus').textContent = `Round ${currentRound} of ${TOTAL_ROUNDS}`;
 
-    // Countdown
+    window._mpCanAccel = false;
     const cd = document.getElementById('countdown');
     cd.style.display = 'block';
-    window._mpCanAccel = false;
     let count = 7;
     cd.textContent = count;
     const iv = setInterval(() => {
       count--;
-      if (count > 0)       { cd.textContent = count; }
-      else if (count === 0){ cd.textContent = 'GO!'; }
-      else { cd.style.display='none'; clearInterval(iv); mpStarted=true; window._mpCanAccel = true;}
+      if (count > 0)        { cd.textContent = count; }
+      else if (count === 0) { cd.textContent = 'GO!'; }
+      else { cd.style.display='none'; clearInterval(iv); mpStarted=true; window._mpCanAccel=true; }
     }, 1000);
 
     renderer.setAnimationLoop(mpLoop);
     listenPlayers(code);
+
+    // Reset player finished flags in Firebase for this round
+    update(ref(rtdb, `rooms/${code}/players/${myPlayerId}`), {
+      finished: false, hasCheese: false, finishTime: 0
+    });
+    update(ref(rtdb, `rooms/${code}`), { cheeseCollected: false, roundFinishCount: 0 });
   });
 }
 
 function spawnMpCheese() {
   for (const c of cheeses) scene.remove(c);
   clearCheeses();
-  // Cheese near top-right corner (opposite of finish at bottom-right; start is top-left)
-  let cr = 1, cc = GW-2;
-  while (cr < GH-1 && grid[cr][cc]) { cr++; if (grid[cr][cc]) cc--; }
-  mpCheeseObj = placeCheeseAt(cr, cc);
+
+  // BFS to find shortest path from start to finish
+  const startR = 1, startC = 1;
+  const finR = GH-2, finC = GW-2;
+  const prev = Array.from({length:GH}, ()=>Array(GW).fill(null));
+  const queue = [[startR, startC]];
+  prev[startR][startC] = [-1,-1];
+  while (queue.length) {
+    const [r,c] = queue.shift();
+    for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+      const nr=r+dr, nc=c+dc;
+      if (nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&!prev[nr][nc]) {
+        prev[nr][nc]=[r,c]; queue.push([nr,nc]);
+      }
+    }
+  }
+
+  // Mark cells on the shortest path
+  const onPath = Array.from({length:GH}, ()=>Array(GW).fill(false));
+  let cur = [finR, finC];
+  while (cur[0]!==startR || cur[1]!==startC) {
+    onPath[cur[0]][cur[1]] = true;
+    cur = prev[cur[0]][cur[1]];
+    if (!cur) break;
+  }
+  onPath[startR][startC] = true;
+
+  // Find dead ends that are NOT on the path and not too close to start or finish
+  const candidates = [];
+  for (let r=1;r<GH-1;r++) for (let c=1;c<GW-1;c++) {
+    if (grid[r][c] || onPath[r][c]) continue;
+    if (r===startR&&c===startC) continue;
+    if (r===finR&&c===finC) continue;
+    // Count open neighbours
+    let openN = 0;
+    for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]])
+      if (!grid[r+dr][c+dc]) openN++;
+    // Prefer dead ends (1 open neighbour) — forces a detour
+    const distFromStart = Math.abs(r-startR)+Math.abs(c-startC);
+    const distFromFin   = Math.abs(r-finR)+Math.abs(c-finC);
+    if (distFromStart > 3 && distFromFin > 3)
+      candidates.push({r, c, dead: openN===1, dist: distFromStart});
+  }
+
+  // Pick a dead end off-path, preferring ones mid-distance from start
+  const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>Math.abs(a.dist-GH/2)-Math.abs(b.dist-GH/2));
+  const pick = deadEnds.length > 0 ? deadEnds[0] : candidates[Math.floor(Math.random()*candidates.length)];
+
+  if (pick) {
+    mpCheeseObj = placeCheeseAt(pick.r, pick.c);
+  }
 }
 
 // ── Listen players ────────────────────────────────────────────
@@ -274,13 +451,21 @@ function listenPlayers(code) {
           m.scale.setScalar(MODEL_SCALE); m.rotation.y = MODEL_FACE; m.position.y = MODEL_Y;
           m.traverse(o => {
             if (o.isMesh) {
-              const mats = Array.isArray(o.material) ? o.material : [o.material];
-              mats.forEach(mat => {
-                if (mat) { mat = mat.clone(); mat.color = new THREE.Color(p.color||'#ff4444'); o.material = mat; }
-              });
-              o.castShadow = true;
+                if (Array.isArray(o.material)) {
+                o.material = o.material.map(mat => {
+                    const m2 = mat.clone();
+                    m2.color.lerp(new THREE.Color(p.color||'#ff4444'), 0.6);
+                    m2.side = THREE.DoubleSide;
+                    return m2;
+                });
+                } else {
+                o.material = o.material.clone();
+                o.material.color.lerp(new THREE.Color(p.color||'#ff4444'), 0.6);
+                o.material.side = THREE.DoubleSide;
+                }
+                o.castShadow = true;
             }
-          });
+            });
           g.add(m);
         }, undefined, () => {
           const fb = new THREE.Mesh(

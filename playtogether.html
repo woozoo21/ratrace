@@ -219,6 +219,7 @@ document.getElementById('mpBack').onclick   = () => showScreen('start');
 document.getElementById('btnCreateRoom').onclick = () => {
   createRoom((code,hosting) => setupLobby(code,hosting));
 };
+document.getElementById('roomCodeInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btnJoinRoom').click(); });
 document.getElementById('btnJoinRoom').onclick = () => {
   const code=document.getElementById('roomCodeInput').value.trim().toUpperCase();
   if(code.length!==4){alert('Enter a 4-letter room code');return;}
@@ -256,16 +257,16 @@ function setupLobby(code,hosting) {
         list.appendChild(li);
       });
     },
-    (room)=>{
-      if(room.level) currentLevel=room.level;
-      if(room.started&&!gameStarted){gameStarted=true;showScreen('game');startMpGame(code,currentLevel,document.getElementById('gameScreen'));}
-    }
-  );
-  startBtn.onclick=async()=>{
-    await triggerStart(code);
-    if(!gameStarted){gameStarted=true;showScreen('game');startMpGame(code,currentLevel,document.getElementById('gameScreen'));}
-  };
-  document.getElementById('lobbyBack').onclick=()=>{leaveRoom();showScreen('start');};
+  (room)=>{
+        if(room.level) currentLevel=room.level;
+        if(room.started&&!gameStarted){gameStarted=true;const pCount=document.getElementById('playerList').children.length;showScreen('game');startMpGame(code,currentLevel,document.getElementById('gameScreen'),pCount);}
+      }
+    );
+    startBtn.onclick=async()=>{
+      await triggerStart(code);
+      if(!gameStarted){gameStarted=true;const pCount=document.getElementById('playerList').children.length;showScreen('game');startMpGame(code,currentLevel,document.getElementById('gameScreen'),pCount);}
+    };
+    document.getElementById('lobbyBack').onclick=()=>{leaveRoom();showScreen('start');};
 }
 </script>
 <div id="nameModal" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center">
