@@ -17,10 +17,10 @@ export const CHEESE_Y    = 1;
 export const CHEESE_GLOW = 0.18;
 export const CELL        = 4;
 export const WALL_H      = 3;
-export const ACCEL       = 40;
+export const ACCEL       = 38;
 export const FRICTION    = 20;
 export const TURN_RATE   = 3;
-export const MAX_SPEED   = 25;
+export const MAX_SPEED   = 24;
 export const FIXED_DT    = 1 / 60;
 
 // ── State ────────────────────────────────────────────────────
@@ -445,18 +445,27 @@ export function physicsTick(dt, speedMultiplier) {
   const maxSpd = MAX_SPEED * (speedMultiplier || 1);
   const keys = window._keys || {};
 
+  if (!window._mpCanAccel) {
+  speed = 0;
+} else {
   if (keys['w'] || keys['arrowup'])        speed += ACCEL * dt;
   else if (keys['s'] || keys['arrowdown']) speed -= ACCEL * dt;
   else speed -= Math.sign(speed) * Math.min(Math.abs(speed), FRICTION * dt);
   speed = THREE.MathUtils.clamp(speed, -7, maxSpd);
+}
 
+  if (!window._mpCanAccel) {
+  // Allow turning only during countdown
+  yaw += ((keys['a']||keys['arrowleft']?1:0) - (keys['d']||keys['arrowright']?1:0)) * TURN_RATE * 0.6 * dt;
+} else {
   if (Math.abs(speed) > 0.3) {
     const turn = (keys['a']||keys['arrowleft'] ? 1:0) - (keys['d']||keys['arrowright'] ? 1:0);
     yaw += turn * TURN_RATE * dt * Math.sign(speed === 0 ? 1 : speed);
   } else {
     yaw += ((keys['a']||keys['arrowleft']?1:0) - (keys['d']||keys['arrowright']?1:0)) * TURN_RATE * 0.6 * dt;
   }
-  rat.rotation.y = yaw;
+}
+rat.rotation.y = yaw;
 
   fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
   const t = clock.getElapsedTime();

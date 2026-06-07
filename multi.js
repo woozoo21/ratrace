@@ -214,16 +214,18 @@ export function startMpGame(code, lvlKey, gameScreen) {
 
     onCheeseTemplateLoaded(() => spawnMpCheese());
 
+
     // Countdown
     const cd = document.getElementById('countdown');
     cd.style.display = 'block';
-    let count = 3;
+    window._mpCanAccel = false;
+    let count = 7;
     cd.textContent = count;
     const iv = setInterval(() => {
       count--;
       if (count > 0)       { cd.textContent = count; }
       else if (count === 0){ cd.textContent = 'GO!'; }
-      else { cd.style.display='none'; clearInterval(iv); mpStarted=true; }
+      else { cd.style.display='none'; clearInterval(iv); mpStarted=true; window._mpCanAccel = true;}
     }, 1000);
 
     renderer.setAnimationLoop(mpLoop);
@@ -335,8 +337,8 @@ function mpLoop() {
   _mpAcc -= FIXED_DT;
   const dt = FIXED_DT;
 
+  physicsTick(dt, mySpeedPenalty);
   if (mpStarted) {
-    physicsTick(dt, mySpeedPenalty);
     mpRaceTime += dt;
     document.getElementById('mpTimer').textContent = `⏱ ${mpRaceTime.toFixed(2)}s`;
 

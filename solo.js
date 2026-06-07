@@ -324,6 +324,7 @@ window.addEventListener('keydown', e => { if (e.target.tagName!=='INPUT') handle
 
 // ── Entry point ───────────────────────────────────────────────
 export function startSolo(gameScreen) {
+  window._mpCanAccel = true;
   document.getElementById('info').style.display    = 'block';
   document.getElementById('mpHud').style.display   = 'none';
   document.getElementById('board').style.display   = 'none';
