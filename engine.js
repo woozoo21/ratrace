@@ -20,7 +20,7 @@ export const WALL_H      = 3;
 export const ACCEL       = 40;
 export const FRICTION    = 20;
 export const TURN_RATE   = 2.6;
-export const MAX_SPEED   = 18;
+export const MAX_SPEED   = 26;
 export const FIXED_DT    = 1 / 60;
 
 // ── State ────────────────────────────────────────────────────

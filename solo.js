@@ -178,6 +178,7 @@ async function renderBoard(lvl) {
     const dayName = DAY_NAMES[d.getDay()];
     const isToday = seed === DAILY_SEED;
     let entries = [];
+    console.log('DAILY_SEED', DAILY_SEED, 'querying seed', seed);
     try {
       const q = query(collection(db,'scores'), where('date','==',seed), orderBy('time'), limit(3));
       const snap = await getDocs(q);
