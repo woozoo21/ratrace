@@ -314,6 +314,17 @@ function listenPlayers(code) {
     });
   });
   mpListeners.push(() => off(playersRef,'value'));
+  const roomRef = ref(rtdb, `rooms/${code}`);
+onValue(roomRef, snap => {
+    const data = snap.val();
+    if (data && data.cheeseCollected && cheeses.length > 0) {
+        scene.remove(cheeses[0]); cheeses.splice(0,1);
+    }
+    if (data && data.cheeseCollected && !mpCheeseWinner) {
+        mySpeedPenalty = 0.98;
+    }
+    });
+    mpListeners.push(() => off(roomRef, 'value'));
 }
 
 // ── MP loop ───────────────────────────────────────────────────
@@ -342,15 +353,14 @@ function mpLoop() {
 
   // Cheese collection
   if (cheeses.length > 0 && cheeses[0].position.distanceTo(rat.position) < 1.6 && !mpCheeseCollected) {
-    scene.remove(cheeses[0]); cheeses.splice(0,1);
     mpCheeseCollected = true;
     mpCheeseWinner    = myName;
     showCheeseNotif(myName + ' (you)');
     showMpStatus('🧀 You cut the cheese! Others are slowed!');
-    // I don't slow down — others do via Firebase
+    update(ref(rtdb, `rooms/${myRoom}`), { cheeseCollected: true });
     update(ref(rtdb, `rooms/${myRoom}/players/${myPlayerId}`), { hasCheese:true });
     mpResults[myPlayerId] = { ...mpResults[myPlayerId], hasCheese:true };
-  }
+    }
 
   // Finish line
   if (finishGate) { finishGate.rotation.z += dt*1.2; }
