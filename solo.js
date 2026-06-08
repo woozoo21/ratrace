@@ -324,7 +324,7 @@ window.addEventListener('keydown', e => { if (e.target.tagName!=='INPUT') handle
 
 // ── Entry point ───────────────────────────────────────────────
 export function startSolo(gameScreen) {
-  window._mpCanAccel = true;
+window._mpCanAccel = true;
   document.getElementById('info').style.display    = 'block';
   document.getElementById('mpHud').style.display   = 'none';
   document.getElementById('board').style.display   = 'none';
@@ -342,20 +342,37 @@ export function startSolo(gameScreen) {
 let _soloAcc = 0;
 function soloLoop() {
   const rawDt = Math.min(clock.getDelta(), 0.1);
-  _soloAcc += rawDt;
-  if (_soloAcc < FIXED_DT) { orbitControls.update(); renderer.render(scene, camera); return; }
+_soloAcc += rawDt;
+const dt = FIXED_DT;
+
+while (_soloAcc >= FIXED_DT) {
+
+  physicsTick(FIXED_DT, 1);
+
+  if (!started && Math.abs(speed) > 0.5)
+    started = true;
+
+  if (started && !finished)
+    raceTime += FIXED_DT;
+
+  if (ghostOn && started && !finished) {
+    currentRun.push({
+      t: raceTime,
+      x: rat.position.x,
+      z: rat.position.z,
+      yaw
+    });
+  }
+
+  if (ghostOn && started)
+    tickGhost(raceTime);
+
+  animateCheeses(FIXED_DT);
+
   _soloAcc -= FIXED_DT;
-  const dt = FIXED_DT;
+}
 
-  physicsTick(dt, 1);
-
-  if (!started && Math.abs(speed) > 0.5) started = true;
-  if (started && !finished) raceTime += dt;
-  if (ghostOn && started && !finished) currentRun.push({ t:raceTime, x:rat.position.x, z:rat.position.z, yaw });
-  if (ghostOn && started) tickGhost(raceTime);
-
-  updateCamera(rat.position);
-  animateCheeses(dt);
+updateCamera(rat.position);
 
   // Collect cheese
   for (let i = cheeses.length-1; i>=0; i--) {

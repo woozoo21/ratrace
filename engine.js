@@ -142,7 +142,7 @@ export function initEngine(container, onReady) {
   hemi    = new THREE.HemisphereLight(0xbfd9ff, 0x4a6b2a, 0.6); scene.add(hemi);
   sun     = new THREE.DirectionalLight(0xffffff, 2.6);
   sun.position.set(30, 50, 20); sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { near:1, far:200, left:-70, right:70, top:70, bottom:-70 });
   scene.add(sun); scene.add(sun.target);
   pointLamp = new THREE.PointLight(0xffaa55, 0, 60);

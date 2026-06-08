@@ -586,8 +586,8 @@ function mpLoop() {
   _mpAcc += rawDt;
   let _steps = 0;
   while (_mpAcc >= FIXED_DT && _steps < 8) {
-    physicsTick(dt, mySpeedPenalty);
-    if (mpStarted) mpRaceTime += dt;
+    if (mpStarted) mpRaceTime += FIXED_DT;
+    animateCheeses(FIXED_DT); 
     _mpAcc -= FIXED_DT;
     _steps++;
   }
@@ -604,7 +604,6 @@ function mpLoop() {
   }
 
   updateCamera(rat.position);
-  animateCheeses(dt);
 
   // Cheese collection
   if (cheeses.length > 0 && cheeses[0].position.distanceTo(rat.position) < 1.6 && !mpCheeseCollected) {
