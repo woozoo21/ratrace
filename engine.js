@@ -53,6 +53,10 @@ export let minimapOn = true;
 let _engineReady = false;
 let _onCheeseLoaded = null;
 
+export function getGW()   { return GW; }
+export function getGH()   { return GH; }
+export function getGrid() { return grid; }
+
 // ── Setters (modules can't reassign exported primitives directly) ──
 export function setSpeed(v)          { speed = v; }
 export function setYaw(v)            { yaw = v; }

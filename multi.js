@@ -16,7 +16,7 @@ import {
   FIXED_DT, CELL, MODEL_URL, MODEL_SCALE, MODEL_Y, MODEL_FACE, CHEESE_SCALE, CHEESE_Y,
   makeRNG, toWorldX, toWorldZ, toCol, toRow,
   generateMaze, placeCheeseAt, clearCheeses, makeNameLabel,
-  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses,
+  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses, getGW, getGH, getGrid,
 } from './engine.js';
 import { getDatabase, ref, set, get, onValue, off, update, remove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
@@ -363,6 +363,9 @@ function _startRound(code, lvlKey, gameScreen) {
     }, 1000);
 
     renderer.setAnimationLoop(mpLoop);
+    // Clear old listeners before adding new ones each round
+    mpListeners.forEach(fn => fn()); 
+    mpListeners = [];
     listenPlayers(code);
 
     // Reset player finished flags in Firebase for this round
@@ -373,7 +376,8 @@ function _startRound(code, lvlKey, gameScreen) {
   });
 }
 
-function spawnMpCheese() {
+function spawnMpCheese() {  
+  const GW = getGW(), GH = getGH(), grid = getGrid();
   for (const c of cheeses) scene.remove(c);
   clearCheeses();
 
@@ -403,26 +407,37 @@ function spawnMpCheese() {
   }
   onPath[startR][startC] = true;
 
-  // Find dead ends that are NOT on the path and not too close to start or finish
+  // BFS from start for actual maze distances
+  const distFromStart = Array.from({length:GH}, ()=>Array(GW).fill(-1));
+  const q1 = [[startR,startC]]; distFromStart[startR][startC]=0;
+  while(q1.length){ const [r,c]=q1.shift(); for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]){ const nr=r+dr,nc=c+dc; if(nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&distFromStart[nr][nc]===-1){ distFromStart[nr][nc]=distFromStart[r][c]+1; q1.push([nr,nc]); } } }
+
+  // BFS from finish for actual maze distances
+  const distFromFin = Array.from({length:GH}, ()=>Array(GW).fill(-1));
+  const q2 = [[finR,finC]]; distFromFin[finR][finC]=0;
+  while(q2.length){ const [r,c]=q2.shift(); for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]){ const nr=r+dr,nc=c+dc; if(nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&distFromFin[nr][nc]===-1){ distFromFin[nr][nc]=distFromFin[r][c]+1; q2.push([nr,nc]); } } }
+
+  const totalDist = distFromStart[finR][finC];
+
   const candidates = [];
   for (let r=1;r<GH-1;r++) for (let c=1;c<GW-1;c++) {
     if (grid[r][c] || onPath[r][c]) continue;
     if (r===startR&&c===startC) continue;
     if (r===finR&&c===finC) continue;
-    // Count open neighbours
+    if (distFromStart[r][c]===-1||distFromFin[r][c]===-1) continue;
+    // Must be at least 50% of path length from start, and 20% from finish
+    if (distFromStart[r][c] < totalDist*0.5) continue;
+    if (distFromFin[r][c] < totalDist*0.2) continue;
     let openN = 0;
     for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]])
       if (!grid[r+dr][c+dc]) openN++;
-    // Prefer dead ends (1 open neighbour) — forces a detour
-    const distFromStart = Math.abs(r-startR)+Math.abs(c-startC);
-    const distFromFin   = Math.abs(r-finR)+Math.abs(c-finC);
-    if (distFromStart > 3 && distFromFin > 3)
-      candidates.push({r, c, dead: openN===1, dist: distFromStart});
+    const score = Math.abs(distFromStart[r][c] - totalDist*0.65);
+    candidates.push({r, c, dead: openN===1, score});
   }
 
-  const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>Math.abs(a.dist-GH/2)-Math.abs(b.dist-GH/2));
-  const pick = deadEnds.length > 0 ? deadEnds[0] : candidates[Math.floor(Math.random()*candidates.length)];
-
+  const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>a.score-b.score);
+  const pick = deadEnds.length > 0 ? deadEnds[0] : candidates.sort((a,b)=>a.score-b.score)[0];
+  
   if (pick) {
     mpCheeseObj = placeCheeseAt(pick.r, pick.c);
   }
