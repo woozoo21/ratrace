@@ -338,7 +338,6 @@ function _startRound(code, lvlKey, gameScreen) {
 
   initEngine(gameScreen, () => {
     generateMaze(L.cw, L.ch, roundSeed);
-    spawnMpCheese();
     rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
     setSpeed(0); setYaw(Math.PI/2);
     lastRat.copy(rat.position);
@@ -421,7 +420,6 @@ function spawnMpCheese() {
       candidates.push({r, c, dead: openN===1, dist: distFromStart});
   }
 
-  // Pick a dead end off-path, preferring ones mid-distance from start
   const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>Math.abs(a.dist-GH/2)-Math.abs(b.dist-GH/2));
   const pick = deadEnds.length > 0 ? deadEnds[0] : candidates[Math.floor(Math.random()*candidates.length)];
 
@@ -519,9 +517,9 @@ onValue(roomRef, snap => {
         scene.remove(cheeses[0]); cheeses.splice(0,1);
     }
     if (data && data.cheeseCollected && !mpCheeseWinner) {
-        mySpeedPenalty = 0.98;
+        mySpeedPenalty = 0.55;
     }
-    });
+});
     mpListeners.push(() => off(roomRef, 'value'));
 }
 
