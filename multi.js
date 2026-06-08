@@ -349,6 +349,8 @@ function _startRound(code, lvlKey, gameScreen) {
   const L = MP_LEVELS[mpLevelKey];
   const roundSeed = L.seed + (currentRound * 100);
 
+  update(ref(rtdb, `rooms/${code}`), { cheeseCollected: false, roundFinishCount: 0 });
+
   initEngine(gameScreen, () => {
     generateMaze(L.cw, L.ch, roundSeed);
     rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
