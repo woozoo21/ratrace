@@ -62,6 +62,8 @@ const TOTAL_ROUNDS = 3;
 let roundPoints = {}; // pid -> total points across rounds
 let roundResults = []; // array of round result objects
 let numPlayers = 1;
+let mpResultsShown = false;   // guard so the results board shows once per round
+let _finishFallback = null;   // fallback timer so a never-finishing player can't hang the round
 
 // ── Helpers ───────────────────────────────────────────────────
 function genRoomCode() {
@@ -119,11 +121,16 @@ function showMpStatus(msg) {
 
 // ── End of game leaderboard ───────────────────────────────────
 function showMpResults() {
+  if (mpResultsShown) return;          // already shown this round
+  mpResultsShown = true;
+  if (_finishFallback) { clearTimeout(_finishFallback); _finishFallback = null; }
+
   // Tally points for this round
   const allPlayers = { ...mpResults };
-  // Add DNF players from mpPlayers
+  // Add players from mpPlayers, using their REAL finish state (the old code
+  // marked everyone here as DNF / time 0, which broke the winner ranking).
   Object.entries(mpPlayers).forEach(([pid, p]) => {
-    if (!allPlayers[pid]) allPlayers[pid] = { pid, name:p.name, time:0, hasCheese:p.hasCheese||false, finished:false };
+    if (!allPlayers[pid]) allPlayers[pid] = { pid, name:p.name, time:p.finishTime||0, hasCheese:p.hasCheese||false, finished:!!p.finished };
   });
   if (!allPlayers[myPlayerId]) allPlayers[myPlayerId] = { pid:myPlayerId, name:myName, time:mpRaceTime, hasCheese:mpCheeseCollected, finished:mpFinished };
 
@@ -242,6 +249,8 @@ export function leaveRoom() {
   mpMazeWinner = null;
   mpFinished = false;
   mpCheeseCollected = false;
+  mpResultsShown = false;
+  if (_finishFallback) { clearTimeout(_finishFallback); _finishFallback = null; }
   currentRound = 1;
   roundPoints = {};
   roundResults = [];
@@ -338,6 +347,8 @@ function _startRound(code, lvlKey, gameScreen) {
   mpResults         = {};
   _mpAcc            = 0;
   mpStarted         = false;
+  mpResultsShown    = false;
+  if (_finishFallback) { clearTimeout(_finishFallback); _finishFallback = null; }
   window._mpCanAccel = false;
 
   document.getElementById('info').style.display  = 'none';
@@ -515,11 +526,11 @@ function listenPlayers(code) {
         if (label && camera) label.lookAt(camera.position);
       }
 
-      // Cheese stolen by someone else
+      // Cheese stolen by someone else (notify only — penalty is handled by
+      // the room listener so it has a single source and resets cleanly)
       if (p.hasCheese && !mpCheeseWinner && p.name !== myName) {
         mpCheeseWinner = p.name;
         showCheeseNotif(p.name);
-        mySpeedPenalty = 0.55;
       }
 
       // Maze winner (someone else finished)
@@ -538,17 +549,28 @@ function listenPlayers(code) {
     Object.keys(mpOtherRats).forEach(pid => {
       if (!players[pid]) { scene.remove(mpOtherRats[pid]); delete mpOtherRats[pid]; }
     });
+
+    // Only show results once EVERYONE has finished, so a fast finisher
+    // doesn't pop the board early and wrongly mark still-racing players DNF.
+    if (mpStarted && !mpResultsShown) {
+      const ids = Object.keys(players);
+      if (ids.length > 0 && ids.every(id => players[id] && players[id].finished)) {
+        showMpResults();
+      }
+    }
   });
   mpListeners.push(() => off(playersRef,'value'));
   const roomRef = ref(rtdb, `rooms/${code}`);
 onValue(roomRef, snap => {
-    const data = snap.val();
-    if (data && data.cheeseCollected && cheeses.length > 0) {
+    const data = snap.val() || {};
+    if (data.cheeseCollected && cheeses.length > 0) {
         scene.remove(cheeses[0]); cheeses.splice(0,1);
     }
-    if (data && data.cheeseCollected && !mpCheeseWinner) {
-        mySpeedPenalty = 0.55;
-    }
+    // Derive the penalty fresh on every update: slowed only while the cheese
+    // is collected AND I'm not the one who got it. When the round resets
+    // (cheeseCollected back to false) this returns to full speed on its own,
+    // so it can't get stuck slow across rounds.
+    mySpeedPenalty = (data.cheeseCollected && !mpCheeseCollected) ? 0.55 : 1.0;
 });
     mpListeners.push(() => off(roomRef, 'value'));
 }
@@ -556,14 +578,21 @@ onValue(roomRef, snap => {
 // ── MP loop ───────────────────────────────────────────────────
 function mpLoop() {
   const rawDt = Math.min(clock.getDelta(), 0.1);
-  _mpAcc += rawDt;
-  if (_mpAcc < FIXED_DT) { orbitControls.update(); renderer.render(scene,camera); return; }
-  _mpAcc -= FIXED_DT;
   const dt = FIXED_DT;
 
-  physicsTick(dt, mySpeedPenalty);
+  // Run physics enough times to keep up with real time. The old version
+  // capped at one step per frame, which made the rat AND the race timer
+  // run slow whenever the frame rate dipped below 60fps.
+  _mpAcc += rawDt;
+  let _steps = 0;
+  while (_mpAcc >= FIXED_DT && _steps < 8) {
+    physicsTick(dt, mySpeedPenalty);
+    if (mpStarted) mpRaceTime += dt;
+    _mpAcc -= FIXED_DT;
+    _steps++;
+  }
+
   if (mpStarted) {
-    mpRaceTime += dt;
     document.getElementById('mpTimer').textContent = `⏱ ${mpRaceTime.toFixed(2)}s`;
 
     // Broadcast position
@@ -602,8 +631,10 @@ function mpLoop() {
     } else {
       showMpStatus(`🏁 You finished! Time: ${mpRaceTime.toFixed(2)}s`);
     }
-    // Show results after short delay
-    setTimeout(() => showMpResults(), 2000);
+    // Don't show results yet — wait for everyone to finish (handled in
+    // listenPlayers). This fallback only fires if someone never crosses the
+    // line, so the round can't hang forever.
+    if (!_finishFallback) _finishFallback = setTimeout(() => showMpResults(), 20000);
   }
 
   if (minimapOn) drawMinimap(rat.position, yaw, Object.values(mpPlayers));
