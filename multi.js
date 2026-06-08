@@ -632,7 +632,7 @@ function mpLoop() {
       showMpStatus(`🏁 You finished! Time: ${mpRaceTime.toFixed(2)}s`);
     }
     // Only arm fallback once someone actually finishes
-    if (!_finishFallback) _finishFallback = setTimeout(() => showMpResults(), 20000);
+    // if (!_finishFallback) _finishFallback = setTimeout(() => showMpResults(), 20000);
   }
 
   if (minimapOn) drawMinimap(rat.position, yaw, Object.values(mpPlayers));
