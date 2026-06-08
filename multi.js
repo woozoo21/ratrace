@@ -237,6 +237,15 @@ export function leaveRoom() {
   }
   mpListeners.forEach(fn => fn()); mpListeners = [];
   mpGameStarted = false;
+  mySpeedPenalty = 1.0;
+  mpCheeseWinner = null;
+  mpMazeWinner = null;
+  mpFinished = false;
+  mpCheeseCollected = false;
+  currentRound = 1;
+  roundPoints = {};
+  roundResults = [];
+  window._mpCanAccel = true;
   if (scene) Object.values(mpOtherRats).forEach(r => scene.remove(r));
   mpOtherRats = {}; mpPlayers = {};
   if (renderer) renderer.setAnimationLoop(null);
@@ -273,8 +282,11 @@ export function joinRoom(code, onLobby, onError) {
 }
 
 async function _writePlayer(code, name, hosting, onLobby) {
+  const L = MP_LEVELS[mpLevelKey];
+  const startX = (1 - (2*(L.cw)+1-1)/2) * 4;
+  const startZ = (1 - (2*(L.ch)+1-1)/2) * 4;
   await update(ref(rtdb, `rooms/${code}/players/${myPlayerId}`), {
-    name, color: myColor, x:0, z:0, yaw:0,
+    name, color: myColor, x:startX, z:startZ, yaw:Math.PI/2,
     finished:false, hasCheese:false, joinedAt:Date.now(), finishTime:0
   });
   if (hosting) {
@@ -317,15 +329,16 @@ export function startMpGame(code, lvlKey, gameScreen, playerCount) {
 }
 
 function _startRound(code, lvlKey, gameScreen) {
-  mpRaceTime       = 0;
-  mpFinished       = false;
-  mpCheeseCollected= false;
-  mySpeedPenalty   = 1.0;
-  mpCheeseWinner   = null;
-  mpMazeWinner     = null;
-  mpResults        = {};
-  _mpAcc           = 0;
-  mpStarted        = false;
+  mpRaceTime        = 0;
+  mpFinished        = false;
+  mpCheeseCollected = false;
+  mySpeedPenalty    = 1.0;
+  mpCheeseWinner    = null;
+  mpMazeWinner      = null;
+  mpResults         = {};
+  _mpAcc            = 0;
+  mpStarted         = false;
+  window._mpCanAccel = false;
 
   document.getElementById('info').style.display  = 'none';
   document.getElementById('mpHud').style.display = 'block';
@@ -437,7 +450,7 @@ function spawnMpCheese() {
 
   const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>a.score-b.score);
   const pick = deadEnds.length > 0 ? deadEnds[0] : candidates.sort((a,b)=>a.score-b.score)[0];
-  
+
   if (pick) {
     mpCheeseObj = placeCheeseAt(pick.r, pick.c);
   }
