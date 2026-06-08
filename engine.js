@@ -476,7 +476,7 @@ rat.rotation.y = yaw;
   const dx = fwd.x * speed * dt, dz = fwd.z * speed * dt;
   if (!blocked(rat.position.x + dx, rat.position.z)) rat.position.x += dx; else speed *= 0.9;
   if (!blocked(rat.position.x, rat.position.z + dz)) rat.position.z += dz; else speed *= 0.9;
-  rat.position.y = Math.abs(speed) > 0.5 ? Math.abs(Math.sin(t * 14)) * 0.12 : 0;
+  rat.position.y = Math.abs(speed) > 0.5 ? Math.abs(Math.sin(t * 14)) * 0.06 : 0;
 }
 
 // ── Cheese animation ─────────────────────────────────────────
