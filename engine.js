@@ -56,6 +56,8 @@ let _onCheeseLoaded = null;
 export function getGW()   { return GW; }
 export function getGH()   { return GH; }
 export function getGrid() { return grid; }
+export function getYaw()   { return yaw; }
+export function getSpeed() { return speed; }
 
 // ── Setters (modules can't reassign exported primitives directly) ──
 export function setSpeed(v)          { speed = v; }

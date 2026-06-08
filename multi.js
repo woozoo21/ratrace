@@ -16,7 +16,7 @@ import {
   FIXED_DT, CELL, MODEL_URL, MODEL_SCALE, MODEL_Y, MODEL_FACE, CHEESE_SCALE, CHEESE_Y,
   makeRNG, toWorldX, toWorldZ, toCol, toRow,
   generateMaze, placeCheeseAt, clearCheeses, makeNameLabel,
-  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses, getGW, getGH, getGrid,
+  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses, getGW, getGH, getGrid, getYaw, getSpeed,
 } from './engine.js';
 import { getDatabase, ref, set, get, onValue, off, update, remove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
@@ -338,7 +338,10 @@ export function startMpGame(code, lvlKey, gameScreen, playerCount) {
 }
 
 function _startRound(code, lvlKey, gameScreen) {
-  mpRaceTime        = 0;
+// Clear old listeners before adding new ones each round
+    mpListeners.forEach(fn => fn()); 
+    mpListeners = [];  
+    mpRaceTime        = 0;
   mpFinished        = false;
   mpCheeseCollected = false;
   mySpeedPenalty    = 1.0;
@@ -389,9 +392,6 @@ function _startRound(code, lvlKey, gameScreen) {
     }, 1000);
 
     renderer.setAnimationLoop(mpLoop);
-    // Clear old listeners before adding new ones each round
-    mpListeners.forEach(fn => fn()); 
-    mpListeners = [];
     listenPlayers(code);
 
     // Reset player finished flags in Firebase for this round
@@ -599,7 +599,7 @@ function mpLoop() {
     // Broadcast position
     if (myRoom && myPlayerId) {
       update(ref(rtdb, `rooms/${myRoom}/players/${myPlayerId}`), {
-        x: rat.position.x, z: rat.position.z, yaw, finished: mpFinished
+        x: rat.position.x, z: rat.position.z, yaw: getYaw(), finished: mpFinished
       });
     }
   }
@@ -634,9 +634,12 @@ function mpLoop() {
     // Don't show results yet — wait for everyone to finish (handled in
     // listenPlayers). This fallback only fires if someone never crosses the
     // line, so the round can't hang forever.
-    if (!_finishFallback) _finishFallback = setTimeout(() => showMpResults(), 20000);
   }
 
+  if (mpStarted && !_finishFallback) {
+    _finishFallback = setTimeout(() => showMpResults(), 20000);
+  }
+  
   if (minimapOn) drawMinimap(rat.position, yaw, Object.values(mpPlayers));
   updateLighting(dt, rat.position);
   orbitControls.update();
