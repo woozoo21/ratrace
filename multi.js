@@ -586,6 +586,7 @@ function mpLoop() {
   _mpAcc += rawDt;
   let _steps = 0;
   while (_mpAcc >= FIXED_DT && _steps < 8) {
+    physicsTick(FIXED_DT * mySpeedPenalty);
     if (mpStarted) mpRaceTime += FIXED_DT;
     animateCheeses(FIXED_DT); 
     _mpAcc -= FIXED_DT;
