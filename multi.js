@@ -587,7 +587,7 @@ function mpLoop() {
   let _steps = 0;
   while (_mpAcc >= FIXED_DT && _steps < 8) {
     physicsTick(FIXED_DT * mySpeedPenalty);
-    if (mpStarted) mpRaceTime += FIXED_DT;
+    if (mpStarted && !mpFinished) mpRaceTime += FIXED_DT;
     animateCheeses(FIXED_DT); 
     _mpAcc -= FIXED_DT;
     _steps++;
@@ -631,9 +631,10 @@ function mpLoop() {
     } else {
       showMpStatus(`🏁 You finished! Time: ${mpRaceTime.toFixed(2)}s`);
     }
-    // Only arm fallback once someone actually finishes
-    // if (!_finishFallback) _finishFallback = setTimeout(() => showMpResults(), 20000);
-  }
+    if (mpStarted && !mpFinished) {
+        document.getElementById('mpTimer').textContent = `⏱ ${mpRaceTime.toFixed(2)}s`;
+    }
+}
 
   if (minimapOn) drawMinimap(rat.position, yaw, Object.values(mpPlayers));
   updateLighting(dt, rat.position);
