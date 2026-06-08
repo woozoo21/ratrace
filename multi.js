@@ -631,15 +631,10 @@ function mpLoop() {
     } else {
       showMpStatus(`🏁 You finished! Time: ${mpRaceTime.toFixed(2)}s`);
     }
-    // Don't show results yet — wait for everyone to finish (handled in
-    // listenPlayers). This fallback only fires if someone never crosses the
-    // line, so the round can't hang forever.
+    // Only arm fallback once someone actually finishes
+    if (!_finishFallback) _finishFallback = setTimeout(() => showMpResults(), 20000);
   }
 
-  if (mpStarted && !_finishFallback) {
-    _finishFallback = setTimeout(() => showMpResults(), 20000);
-  }
-  
   if (minimapOn) drawMinimap(rat.position, yaw, Object.values(mpPlayers));
   updateLighting(dt, rat.position);
   orbitControls.update();
