@@ -383,8 +383,8 @@ export function drawMinimap(ratPos, ratYaw, otherPlayers) {
   }
 
   // My arrow
-  const rx = ox + (ratPos.x/CELL + (GW-1)/2)*s;
-  const ry = oy + (ratPos.z/CELL + (GH-1)/2)*s;
+  const rx = ox + (ratPos.x/CELL + (GW-1)/2)*s + s/2;
+  const ry = oy + (ratPos.z/CELL + (GH-1)/2)*s + s/2;
   mctx.save();
   mctx.translate(rx, ry); mctx.rotate(Math.PI - ratYaw);
   mctx.fillStyle = '#ffffff';
@@ -513,3 +513,52 @@ window.addEventListener('keydown', e => {
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
 });
 window.addEventListener('keyup', e => { window._keys[e.key.toLowerCase()] = false; });
+
+// ── Mobile D-pad controls ─────────────────────────────────────
+function isMobile() {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+function initDpad() {
+  if (!isMobile()) return;
+  const dpad = document.getElementById('dpad');
+  if (!dpad) return;
+  dpad.style.display = 'block';
+
+  const buttons = [
+    { id: 'dUp',    key: 'w' },
+    { id: 'dDown',  key: 's' },
+    { id: 'dLeft',  key: 'a' },
+    { id: 'dRight', key: 'd' },
+  ];
+
+  buttons.forEach(({ id, key }) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      window._keys[key] = true;
+      btn.style.background = 'rgba(255,211,90,0.35)';
+    }, { passive: false });
+
+    btn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      window._keys[key] = false;
+      btn.style.background = 'rgba(255,255,255,0.15)';
+    }, { passive: false });
+
+    btn.addEventListener('touchcancel', (e) => {
+      window._keys[key] = false;
+      btn.style.background = 'rgba(255,255,255,0.15)';
+    });
+
+    // Prevent mouse events from firing too
+    btn.addEventListener('mousedown', (e) => { e.preventDefault(); window._keys[key] = true; btn.style.background = 'rgba(255,211,90,0.35)'; });
+    btn.addEventListener('mouseup', (e) => { window._keys[key] = false; btn.style.background = 'rgba(255,255,255,0.15)'; });
+    btn.addEventListener('mouseleave', (e) => { window._keys[key] = false; btn.style.background = 'rgba(255,255,255,0.15)'; });
+  });
+}
+
+// Auto-init when engine starts
+setTimeout(initDpad, 500);

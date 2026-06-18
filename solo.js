@@ -328,6 +328,17 @@ function buildControls() {
     saveMsg.textContent = 'Saved! 🧀  Open 🏆 Leaderboard to see standings.';
   };
   nameInput.addEventListener('keydown', e => { if (e.key==='Enter') saveBtn.click(); });
+  // Mobile menu buttons
+  const mbEasy = document.getElementById('mbEasy');
+  const mbMed  = document.getElementById('mbMedium');
+  const mbHard = document.getElementById('mbHard');
+  const mbBoard = document.getElementById('mbBoard');
+  const mbMenu = document.getElementById('mbMenu');
+  if (mbEasy)  mbEasy.onclick  = () => { setLevel('easy');   document.getElementById('board').style.display='none'; };
+  if (mbMed)   mbMed.onclick   = () => { setLevel('medium'); document.getElementById('board').style.display='none'; };
+  if (mbHard)  mbHard.onclick  = () => { setLevel('hard');   document.getElementById('board').style.display='none'; };
+  if (mbBoard) mbBoard.onclick = () => { renderBoard(levelKey); document.getElementById('board').style.display='block'; };
+  if (mbMenu)  mbMenu.onclick  = () => { window.showScreen('start'); };
 }
 
 function handleKeys(k) {

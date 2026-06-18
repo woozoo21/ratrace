@@ -99,8 +99,32 @@
   #mpLevelSelect { display:flex; gap:10px; }
   #mpLevelSelect button { font-family:monospace; font-size:13px; padding:8px 16px; border-radius:6px; border:1px solid #555; background:#222; color:#fff; cursor:pointer; }
   #mpLevelSelect button.active { border-color:#ffd35a; color:#ffd35a; background:#2a2410; }
+
+  @media (max-width: 768px) {
+  #controls { display: none !important; }
+  #mobileMenu { display: flex !important; }
+  #info { font-size: 11px; max-width: 200px; padding: 6px 8px; }
+  #minimap { width: 120px; height: 120px; }
+}
+#mobileMenu {
+  display: none; position: absolute; bottom: 14px; left: 10px;
+  z-index: 50; gap: 6px; flex-wrap: wrap; max-width: 200px;
+}
+#mobileMenu button {
+  background: rgba(0,0,0,0.5); color: #fff; border: 1px solid #555;
+  border-radius: 6px; padding: 8px 10px; font-family: monospace;
+  font-size: 11px; cursor: pointer; touch-action: manipulation;
+}
 </style>
 </head>
+<div id="dpad" style="display:none;position:absolute;bottom:80px;right:20px;z-index:50;user-select:none;-webkit-user-select:none">
+  <div style="position:relative;width:150px;height:150px">
+    <button id="dUp" style="position:absolute;top:0;left:50px;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">▲</button>
+    <button id="dLeft" style="position:absolute;top:50px;left:0;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">◀</button>
+    <button id="dRight" style="position:absolute;top:50px;left:100px;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">▶</button>
+    <button id="dDown" style="position:absolute;top:100px;left:50px;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">▼</button>
+  </div>
+</div>
 <body>
 
 <div id="startScreen">
@@ -156,6 +180,13 @@
   </div>
   <div id="mpHud"><b>🐭 Rat Race</b> — Multiplayer<br><div id="mpTimer">⏱ 0.00s</div><div id="mpStatus"></div></div>
   <div id="controls"></div>
+<div id="mobileMenu">
+  <button id="mbEasy">Easy</button>
+  <button id="mbMedium">Med</button>
+  <button id="mbHard">Hard</button>
+  <button id="mbBoard">🏆</button>
+  <button id="mbMenu">🏠</button>
+</div>
   <canvas id="minimap" width="170" height="170"></canvas>
   <div id="gatehint">🔒 Collect all the cheese to open the gate!</div>
   <div id="countdown"></div>
