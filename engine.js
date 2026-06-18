@@ -519,7 +519,7 @@ function isMobile() {
   return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 }
 
-function initDpad() {
+export function initDpad() {
   if (!isMobile()) return;
   const dpad = document.getElementById('dpad');
   if (!dpad) return;
@@ -560,5 +560,3 @@ function initDpad() {
   });
 }
 
-// Auto-init when engine starts
-setTimeout(initDpad, 500);

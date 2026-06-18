@@ -8,7 +8,7 @@ import {
   renderer, scene, camera, orbitControls, skybox,
   rat, ghostRat, cheeses, cheeseTemplate, cheeseGeo, cheeseMat, cheeseMats,
   startPos, finishPos, finishGate,
-  GW, GH, grid,
+  GW, GH, grid, initDpad,
   speed, yaw, lastRat, clock, accumulator,
   nightMode, followCam, savedCamOffset, minimapOn,
   setSpeed, setYaw, setAccumulator, setNightMode, setFollowCam, setSavedCamOffset, setMinimapOn,
@@ -365,6 +365,7 @@ window._mpCanAccel = true;
   document.getElementById('board').style.display   = 'none';
 
   initEngine(gameScreen, () => {
+    initDpad();
     buildControls();
     onCheeseTemplateLoaded(() => spawnCheese());
     loadGhost(levelKey);
