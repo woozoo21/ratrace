@@ -16,7 +16,7 @@ import {
   FIXED_DT, CELL, MODEL_URL, MODEL_SCALE, MODEL_Y, MODEL_FACE, CHEESE_SCALE, CHEESE_Y,
   makeRNG, toWorldX, toWorldZ, toCol, toRow,
   generateMaze, placeCheeseAt, clearCheeses, makeNameLabel,
-  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses, getGW, getGH, getGrid, getYaw, getSpeed,
+  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses, rebuildMazeWalls, getGW, getGH, getGrid, getYaw, getSpeed,
 } from './engine.js';
 import { getDatabase, ref, set, get, onValue, off, update, remove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
@@ -382,7 +382,7 @@ function _startRound(code, lvlKey, gameScreen) {
     window._mpCanAccel = false;
     const cd = document.getElementById('countdown');
     cd.style.display = 'block';
-    let count = 7;
+    let count = 2;
     cd.textContent = count;
     const iv = setInterval(() => {
       count--;
@@ -404,6 +404,23 @@ function _startRound(code, lvlKey, gameScreen) {
 
 function spawnMpCheese() {  
   const GW = getGW(), GH = getGH(), grid = getGrid();
+
+   // Carve a second wandering path through the existing maze
+  const rng2 = makeRNG(MP_LEVELS[mpLevelKey].seed + 7777);
+  let r2 = Math.floor(GH/2), c2 = 1;  // start from middle left
+  while (r2 < GH-2 || c2 < GW-2) {
+    grid[r2][c2] = false;
+    const goRight = c2 < GW-2 && (rng2() > 0.4 || r2 >= GH-2);
+    const goDown  = r2 < GH-2 && (rng2() > 0.4 || c2 >= GW-2);
+    if (goRight && (!goDown || rng2() > 0.5)) {
+      c2 = Math.min(c2+1, GW-2);
+    } else if (goDown) {
+      r2 = Math.min(r2+1, GH-2);
+    } else {
+      break;
+    }
+  }
+  rebuildMazeWalls();
   for (const c of cheeses) scene.remove(c);
   clearCheeses();
 
@@ -452,7 +469,7 @@ function spawnMpCheese() {
     if (r===finR&&c===finC) continue;
     if (distFromStart[r][c]===-1||distFromFin[r][c]===-1) continue;
     // Must be at least 50% of path length from start, and 20% from finish
-    if (distFromStart[r][c] < totalDist*0.5) continue;
+    if (distFromStart[r][c] < totalDist*0.7) continue;
     if (distFromFin[r][c] < totalDist*0.2) continue;
     let openN = 0;
     for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]])
@@ -461,8 +478,17 @@ function spawnMpCheese() {
     candidates.push({r, c, dead: openN===1, score});
   }
 
-  const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>a.score-b.score);
-  const pick = deadEnds.length > 0 ? deadEnds[0] : candidates.sort((a,b)=>a.score-b.score)[0];
+  const slightDetours = candidates.filter(x => {
+  let openN = 0;
+  for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]])
+    if (!grid[x.r+dr][x.c+dc]) openN++;
+  return openN === 2;
+}).sort((a,b) => a.score-b.score);
+
+const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>a.score-b.score);
+const pick = slightDetours.length > 0 ? slightDetours[0] : 
+             deadEnds.length > 0 ? deadEnds[0] : 
+             candidates.sort((a,b)=>a.score-b.score)[0];
 
   if (pick) {
     mpCheeseObj = placeCheeseAt(pick.r, pick.c);

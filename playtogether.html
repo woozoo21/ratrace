@@ -209,7 +209,9 @@ function showScreen(name) {
   const t=screens[name];
   if(t) t.style.display=(name==='game')?'block':'flex';
 }
-showScreen('start');
+window.showScreen = showScreen;
+showScreen('game');
+startSolo(document.getElementById('gameScreen'));
 
 document.getElementById('btnSolo').onclick = () => { showScreen('game'); startSolo(document.getElementById('gameScreen')); };
 document.getElementById('backBtn').onclick = () => { leaveRoom(); showScreen('start'); };

@@ -160,8 +160,12 @@ async function addScore(name, time, lvl, frames) {
   const docId    = `${WEEKLY_SEED}_${lvl}_${name}`;
   const ref      = doc(db, 'scores', docId);
   const existing = await getDoc(ref);
+  
+  // If doc exists and it's not the same person (different time means different person)
+  // Allow overwrite only if this is a better time for the same name
   if (existing.exists() && existing.data().time <= time) return;
-  const sampled  = frames.filter((_,i) => i%5===0);
+  
+  const sampled = frames.filter((_,i) => i%5===0);
   await setDoc(ref, { name, time, lvl, weekSeed: WEEKLY_SEED, date: DAILY_SEED, frames: sampled });
 }
 
@@ -178,7 +182,6 @@ async function renderBoard(lvl) {
     const dayName = DAY_NAMES[d.getDay()];
     const isToday = seed === DAILY_SEED;
     let entries = [];
-    console.log('DAILY_SEED', DAILY_SEED, 'querying seed', seed);
     try {
       const q = query(collection(db,'scores'), where('date','==',seed), orderBy('time'), limit(3));
       const snap = await getDocs(q);
@@ -256,6 +259,7 @@ function buildControls() {
     ['btnBoard','Leaderboard (L)'], ['btnFollow','Follow Cam (F): On'],
     ['btnSaveCam','Save Cam'], ['btnGhost','Ghost (G): On'],
     ['btnNight','Night Mode (N): Off'], ['btnMinimap','Minimap (M): On'],
+    ['btnMode','🏠 Menu'],
   ].forEach(([id,txt]) => {
     const b = document.createElement('button'); b.id = id; b.textContent = txt; ctrl.appendChild(b);
   });
@@ -289,17 +293,37 @@ function buildControls() {
     document.getElementById('minimap').style.display = minimapOn?'block':'none';
     document.getElementById('btnMinimap').textContent = 'Minimap: '+(minimapOn?'On (M)':'Off (M)');
   };
+  document.getElementById('btnMode').onclick = () => {
+  window.showScreen('start');
+  };
 
   // Save score
   const nameInput = document.getElementById('nameInput');
   const saveBtn   = document.getElementById('saveBtn');
   const saveMsg   = document.getElementById('saveMsg');
-  if (myName) { nameInput.value = myName; nameInput.disabled = true; }
+  if (myName) { nameInput.value = myName; }
   saveBtn.onclick = async () => {
     let nm = (nameInput.value||'Anon').trim()||'Anon';
+    saveBtn.disabled = true;
+    saveMsg.textContent = 'Checking name…';
+
+    // Check if name is taken by someone with a different stored name
+    const storedName = localStorage.getItem('ratrace_username');
+    if (nm !== storedName) {
+      // Check if this name exists in the leaderboard already
+      const checkId  = `${WEEKLY_SEED}_${levelKey}_${nm}`;
+      const checkRef = doc(db, 'scores', checkId);
+      const checkSnap = await getDoc(checkRef);
+      if (checkSnap.exists()) {
+        saveMsg.textContent = '❌ Name already taken! Choose a different name.';
+        saveBtn.disabled = false;
+        return;
+      }
+    }
+
     localStorage.setItem('ratrace_username', nm);
-    myName = nm; nameInput.value = nm; nameInput.disabled = true;
-    saveBtn.disabled = true; saveMsg.textContent = 'Saving…';
+    myName = nm; nameInput.value = nm;
+    saveMsg.textContent = 'Saving…';
     await addScore(nm, raceTime, levelKey, currentRun);
     saveMsg.textContent = 'Saved! 🧀  Open 🏆 Leaderboard to see standings.';
   };
@@ -408,7 +432,7 @@ updateCamera(rat.position);
       (newBest?'NEW BEST TIME!! Ghost updated. ':'')+
       (beat?'You beat the par time!':'⏱ Just over par — try again!')+'</span>';
     const nameInput = document.getElementById('nameInput');
-    nameInput.value = myName||''; nameInput.disabled = !!myName;
+    nameInput.value = myName||''; nameInput.disabled = false;
     document.getElementById('saveBtn').disabled = false;
     document.getElementById('saveMsg').textContent = '';
     document.getElementById('win').style.display = 'block';

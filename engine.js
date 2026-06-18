@@ -491,6 +491,20 @@ export function animateCheeses(dt) {
   }
 }
 
+export function rebuildMazeWalls() {
+  scene.remove(mazeGroup);
+  mazeGroup = new THREE.Group();
+  for (let r = 0; r < GH; r++) for (let c = 0; c < GW; c++) {
+    if (grid[r][c]) {
+      const w = new THREE.Mesh(wallGeo, wallMat);
+      w.position.set(toWorldX(c), WALL_H / 2, toWorldZ(r));
+      w.receiveShadow = true;
+      mazeGroup.add(w);
+    }
+  }
+  scene.add(mazeGroup);
+}
+
 // ── Keyboard ─────────────────────────────────────────────────
 window._keys = {};
 window.addEventListener('keydown', e => {
