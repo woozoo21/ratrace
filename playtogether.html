@@ -117,13 +117,10 @@
 }
 </style>
 </head>
-<div id="dpad" style="display:none;position:absolute;bottom:80px;right:20px;z-index:50;user-select:none;-webkit-user-select:none">
-  <div style="position:relative;width:150px;height:150px">
-    <button id="dUp" style="position:absolute;top:0;left:50px;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">▲</button>
-    <button id="dLeft" style="position:absolute;top:50px;left:0;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">◀</button>
-    <button id="dRight" style="position:absolute;top:50px;left:100px;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">▶</button>
-    <button id="dDown" style="position:absolute;top:100px;left:50px;width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#ffd35a;font-size:20px;touch-action:none">▼</button>
-  </div>
+<div id="joystick" style="display:none;position:absolute;bottom:30px;right:30px;width:140px;height:140px;z-index:50;touch-action:none;user-select:none;-webkit-user-select:none">
+  <div style="position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,0.12);border:2px solid rgba(255,255,255,0.3)"></div>
+  <div id="joyThumb" style="position:absolute;top:50%;left:50%;width:55px;height:55px;border-radius:50%;background:rgba(255,211,90,0.6);border:2px solid #ffd35a;transform:translate(-50%,-50%);pointer-events:none"></div>
+</div>
 </div>
 <body>
 

@@ -450,29 +450,35 @@ export function updateCamera(ratPos) {
 export function physicsTick(dt, speedMultiplier) {
   const maxSpd = MAX_SPEED * (speedMultiplier || 1);
   const keys = window._keys || {};
+  const joy = window._joyAxis || { x: 0, y: 0 }; // -1 to 1
 
-  if (!window._mpCanAccel) {
-  speed = 0;
-} else {
-  if (keys['w'] || keys['arrowup'])        speed += ACCEL * dt;
-  else if (keys['s'] || keys['arrowdown']) speed -= ACCEL * dt;
+  // Forward/back — combine keys and joystick
+  let forwardInput = 0;
+  if (keys['w'] || keys['arrowup'])        forwardInput = 1;
+  else if (keys['s'] || keys['arrowdown']) forwardInput = -1;
+  if (Math.abs(joy.y) > 0.05) forwardInput = -joy.y; // joystick Y is inverted
+
+  if (forwardInput > 0)      speed += ACCEL * dt * forwardInput;
+  else if (forwardInput < 0) speed += ACCEL * dt * forwardInput;
   else speed -= Math.sign(speed) * Math.min(Math.abs(speed), FRICTION * dt);
   speed = THREE.MathUtils.clamp(speed, -7, maxSpd);
-}
 
-  if (!window._mpCanAccel) {
-  // Allow turning only during countdown
-  yaw += ((keys['a']||keys['arrowleft']?1:0) - (keys['d']||keys['arrowright']?1:0)) * TURN_RATE * 0.6 * dt;
-} else {
-  if (Math.abs(speed) > 0.3) {
-    const turn = (keys['a']||keys['arrowleft'] ? 1:0) - (keys['d']||keys['arrowright'] ? 1:0);
-    yaw += turn * TURN_RATE * dt * Math.sign(speed === 0 ? 1 : speed);
-  } else {
-    yaw += ((keys['a']||keys['arrowleft']?1:0) - (keys['d']||keys['arrowright']?1:0)) * TURN_RATE * 0.6 * dt;
+  // Turn — combine keys and joystick
+  let turnInput = 0;
+  if (keys['a'] || keys['arrowleft'])  turnInput += 1;
+  if (keys['d'] || keys['arrowright']) turnInput -= 1;
+  if (Math.abs(joy.x) > 0.05) {
+    // Apply curve so small tilts give very small turns, full tilt gives full turn
+    const sign = Math.sign(joy.x);
+    turnInput = -sign * Math.pow(Math.abs(joy.x), 2);
   }
-}
-rat.rotation.y = yaw;
 
+  if (Math.abs(speed) > 0.3) {
+    yaw += turnInput * TURN_RATE * dt * Math.sign(speed === 0 ? 1 : speed);
+  } else {
+    yaw += turnInput * TURN_RATE * 0.6 * dt;
+  }
+  rat.rotation.y = yaw;
   fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
   const t = clock.getElapsedTime();
   const dx = fwd.x * speed * dt, dz = fwd.z * speed * dt;
@@ -514,49 +520,93 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { window._keys[e.key.toLowerCase()] = false; });
 
-// ── Mobile D-pad controls ─────────────────────────────────────
+// ── Mobile joystick controls ──────────────────────────────────
 function isMobile() {
   return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 }
 
+let joyTouchId = null;
+let joyCenterX = 0, joyCenterY = 0;
+const JOY_MAX = 50;
+const JOY_DEAD = 8;
+
 export function initDpad() {
   if (!isMobile()) return;
-  const dpad = document.getElementById('dpad');
-  if (!dpad) return;
-  dpad.style.display = 'block';
+  const joy = document.getElementById('joystick');
+  if (!joy) return;
+  joy.style.display = 'block';
 
-  const buttons = [
-    { id: 'dUp',    key: 'w' },
-    { id: 'dDown',  key: 's' },
-    { id: 'dLeft',  key: 'a' },
-    { id: 'dRight', key: 'd' },
-  ];
+function setKeys(dx, dy) {
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len < JOY_DEAD) {
+      window._joyAxis = { x: 0, y: 0 };
+      return;
+    }
+    const nx = Math.max(-1, Math.min(1, dx / JOY_MAX));
+    const ny = Math.max(-1, Math.min(1, dy / JOY_MAX));
+    window._joyAxis = { x: nx, y: ny };
+  }
 
-  buttons.forEach(({ id, key }) => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
+  function moveThumb(dx, dy) {
+    const thumb = document.getElementById('joyThumb');
+    if (!thumb) return;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const clamp = Math.min(len, JOY_MAX);
+    const angle = Math.atan2(dy, dx);
+    const tx = Math.cos(angle) * clamp;
+    const ty = Math.sin(angle) * clamp;
+    thumb.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
+  }
 
-    btn.addEventListener('touchstart', (e) => {
+  function resetThumb() {
+    const thumb = document.getElementById('joyThumb');
+    if (thumb) thumb.style.transform = 'translate(-50%, -50%)';
+  }
+
+  // Touch start ON the joystick element only
+  joy.addEventListener('touchstart', (e) => {
+    if (joyTouchId !== null) return;
+    const touch = e.changedTouches[0];
+    joyTouchId = touch.identifier;
+    const rect = joy.getBoundingClientRect();
+    joyCenterX = rect.left + rect.width/2;
+    joyCenterY = rect.top  + rect.height/2;
+    e.preventDefault();
+    e.stopPropagation();
+    if (orbitControls) orbitControls.enabled = false;
+  }, { passive: false });
+
+  // Global touchmove — track the joystick finger anywhere
+  window.addEventListener('touchmove', (e) => {
+    if (joyTouchId === null) return;
+    for (const touch of e.changedTouches) {
+      if (touch.identifier !== joyTouchId) continue;
+      const dx = touch.clientX - joyCenterX;
+      const dy = touch.clientY - joyCenterY;
+      moveThumb(dx, dy);
+      setKeys(dx, dy);
       e.preventDefault();
-      window._keys[key] = true;
-      btn.style.background = 'rgba(255,211,90,0.35)';
-    }, { passive: false });
+    }
+  }, { passive: false });
 
-    btn.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      window._keys[key] = false;
-      btn.style.background = 'rgba(255,255,255,0.15)';
-    }, { passive: false });
+  window.addEventListener('touchend', (e) => {
+    if (joyTouchId === null) return;
+    for (const touch of e.changedTouches) {
+      if (touch.identifier !== joyTouchId) continue;
+      joyTouchId = null;
+      window._keys['w'] = false; window._keys['s'] = false;
+      window._keys['a'] = false; window._keys['d'] = false;
+      resetThumb();
+      if (orbitControls) orbitControls.enabled = true;
+    }
+  }, { passive: true });
 
-    btn.addEventListener('touchcancel', (e) => {
-      window._keys[key] = false;
-      btn.style.background = 'rgba(255,255,255,0.15)';
-    });
-
-    // Prevent mouse events from firing too
-    btn.addEventListener('mousedown', (e) => { e.preventDefault(); window._keys[key] = true; btn.style.background = 'rgba(255,211,90,0.35)'; });
-    btn.addEventListener('mouseup', (e) => { window._keys[key] = false; btn.style.background = 'rgba(255,255,255,0.15)'; });
-    btn.addEventListener('mouseleave', (e) => { window._keys[key] = false; btn.style.background = 'rgba(255,255,255,0.15)'; });
+  window.addEventListener('touchcancel', () => {
+    if (joyTouchId === null) return;
+    joyTouchId = null;
+    window._keys['w'] = false; window._keys['s'] = false;
+    window._keys['a'] = false; window._keys['d'] = false;
+    resetThumb();
+    if (orbitControls) orbitControls.enabled = true;
   });
 }
-

@@ -366,7 +366,6 @@ function _startRound(code, lvlKey, gameScreen) {
   update(ref(rtdb, `rooms/${code}`), { cheeseCollected: false, roundFinishCount: 0 });
 
   initEngine(gameScreen, () => {
-    initDpad();
     generateMaze(L.cw, L.ch, roundSeed);
     rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
     setSpeed(0); setYaw(Math.PI/2);
