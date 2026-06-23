@@ -464,31 +464,24 @@ export function physicsTick(dt, speedMultiplier) {
 
   // Joystick overrides keyboard if active
   if (Math.abs(joy.y) > 0.01 || Math.abs(joy.x) > 0.01) {
-    forwardInput = -joy.y;   // up on joystick = forward
-    turnInput    = -joy.x;   // left on joystick = left turn
+    forwardInput = joy.y > 0.4 ? -joy.y : 1; // forward unless below reverse line
+    turnInput    = -joy.x;
   }
-
- // Forward/back
+// Forward/back — same as keyboard
   if (Math.abs(forwardInput) > 0.01) {
     speed += ACCEL * dt * forwardInput;
   } else {
     speed -= Math.sign(speed) * Math.min(Math.abs(speed), FRICTION * dt);
   }
-  // For joystick (analog), clamp max speed proportionally to tilt
-  // Clamp speed by joystick magnitude (not just Y) so diagonals still go full speed when pushed far
-  if (Math.abs(joy.y) > 0.01 || Math.abs(joy.x) > 0.01) {
-    const joyMag = Math.min(1, Math.sqrt(joy.x*joy.x + joy.y*joy.y));
-    const maxByTilt = maxSpd * joyMag;
-    speed = THREE.MathUtils.clamp(speed, -7, maxByTilt);
-  } else {
-    speed = THREE.MathUtils.clamp(speed, -7, maxSpd);
-  }
+  speed = THREE.MathUtils.clamp(speed, -7, maxSpd);
   
   // Turn — proportional to joystick tilt, full rate for keyboard
+  const joyActive = Math.abs(joy.x) > 0.01 || Math.abs(joy.y) > 0.01;
+  const turnBoost = joyActive ? 1.0 : 1.0; // joystick turns 60% faster
   if (Math.abs(speed) > 0.3) {
-    yaw += turnInput * TURN_RATE * dt * Math.sign(speed === 0 ? 1 : speed);
+    yaw += turnInput * TURN_RATE * turnBoost * dt * Math.sign(speed === 0 ? 1 : speed);
   } else {
-    yaw += turnInput * TURN_RATE * 0.6 * dt;
+    yaw += turnInput * TURN_RATE * turnBoost * 0.6 * dt;
   }
   rat.rotation.y = yaw;
 
