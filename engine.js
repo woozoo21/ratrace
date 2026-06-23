@@ -453,6 +453,7 @@ export function physicsTick(dt, speedMultiplier) {
   const maxSpd = MAX_SPEED * (speedMultiplier || 1);
   const keys = window._keys || {};
   const joy = window._joyAxis || { x: 0, y: 0 };
+  const canAccel = window._mpCanAccel !== false; // default true if undefined
 
   // Keyboard input
   let forwardInput = 0;
@@ -467,8 +468,10 @@ export function physicsTick(dt, speedMultiplier) {
     forwardInput = joy.y > 0.4 ? -joy.y : 1; // forward unless below reverse line
     turnInput    = -joy.x;
   }
-// Forward/back — same as keyboard
-  if (Math.abs(forwardInput) > 0.01) {
+// Forward/back — same as keyboard. But during countdown, freeze speed.
+  if (!canAccel) {
+    speed = 0;
+  } else if (Math.abs(forwardInput) > 0.01) {
     speed += ACCEL * dt * forwardInput;
   } else {
     speed -= Math.sign(speed) * Math.min(Math.abs(speed), FRICTION * dt);

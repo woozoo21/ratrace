@@ -382,7 +382,7 @@ function _startRound(code, lvlKey, gameScreen) {
     window._mpCanAccel = false;
     const cd = document.getElementById('countdown');
     cd.style.display = 'block';
-    let count = 2;
+    let count = 7;
     cd.textContent = count;
     const iv = setInterval(() => {
       count--;
@@ -612,7 +612,7 @@ function mpLoop() {
   _mpAcc += rawDt;
   let _steps = 0;
   while (_mpAcc >= FIXED_DT && _steps < 8) {
-    physicsTick(FIXED_DT * mySpeedPenalty);
+    physicsTick(FIXED_DT , mySpeedPenalty);
     if (mpStarted && !mpFinished) mpRaceTime += FIXED_DT;
     animateCheeses(FIXED_DT); 
     _mpAcc -= FIXED_DT;
