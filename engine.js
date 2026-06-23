@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { initControls } from './controls.js';
 
 export const ASSETS = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples';
 export const MODEL_URL   = './rat.glb';
@@ -245,6 +246,7 @@ export function initEngine(container, onReady) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  initControls(orbitControls);
   onReady();
 }
 
@@ -450,42 +452,52 @@ export function updateCamera(ratPos) {
 export function physicsTick(dt, speedMultiplier) {
   const maxSpd = MAX_SPEED * (speedMultiplier || 1);
   const keys = window._keys || {};
-  const joy = window._joyAxis || { x: 0, y: 0 }; // -1 to 1
+  const joy = window._joyAxis || { x: 0, y: 0 };
 
-  // Forward/back — combine keys and joystick
+  // Keyboard input
   let forwardInput = 0;
+  let turnInput = 0;
   if (keys['w'] || keys['arrowup'])        forwardInput = 1;
   else if (keys['s'] || keys['arrowdown']) forwardInput = -1;
-  if (Math.abs(joy.y) > 0.05) forwardInput = -joy.y; // joystick Y is inverted
-
-  if (forwardInput > 0)      speed += ACCEL * dt * forwardInput;
-  else if (forwardInput < 0) speed += ACCEL * dt * forwardInput;
-  else speed -= Math.sign(speed) * Math.min(Math.abs(speed), FRICTION * dt);
-  speed = THREE.MathUtils.clamp(speed, -7, maxSpd);
-
-  // Turn — combine keys and joystick
-  let turnInput = 0;
   if (keys['a'] || keys['arrowleft'])  turnInput += 1;
   if (keys['d'] || keys['arrowright']) turnInput -= 1;
-  if (Math.abs(joy.x) > 0.05) {
-    // Apply curve so small tilts give very small turns, full tilt gives full turn
-    const sign = Math.sign(joy.x);
-    turnInput = -sign * Math.pow(Math.abs(joy.x), 2);
+
+  // Joystick overrides keyboard if active
+  if (Math.abs(joy.y) > 0.01 || Math.abs(joy.x) > 0.01) {
+    forwardInput = -joy.y;   // up on joystick = forward
+    turnInput    = -joy.x;   // left on joystick = left turn
   }
 
+ // Forward/back
+  if (Math.abs(forwardInput) > 0.01) {
+    speed += ACCEL * dt * forwardInput;
+  } else {
+    speed -= Math.sign(speed) * Math.min(Math.abs(speed), FRICTION * dt);
+  }
+  // For joystick (analog), clamp max speed proportionally to tilt
+  // Clamp speed by joystick magnitude (not just Y) so diagonals still go full speed when pushed far
+  if (Math.abs(joy.y) > 0.01 || Math.abs(joy.x) > 0.01) {
+    const joyMag = Math.min(1, Math.sqrt(joy.x*joy.x + joy.y*joy.y));
+    const maxByTilt = maxSpd * joyMag;
+    speed = THREE.MathUtils.clamp(speed, -7, maxByTilt);
+  } else {
+    speed = THREE.MathUtils.clamp(speed, -7, maxSpd);
+  }
+  
+  // Turn — proportional to joystick tilt, full rate for keyboard
   if (Math.abs(speed) > 0.3) {
     yaw += turnInput * TURN_RATE * dt * Math.sign(speed === 0 ? 1 : speed);
   } else {
     yaw += turnInput * TURN_RATE * 0.6 * dt;
   }
   rat.rotation.y = yaw;
+
   fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
   const t = clock.getElapsedTime();
   const dx = fwd.x * speed * dt, dz = fwd.z * speed * dt;
   if (!blocked(rat.position.x + dx, rat.position.z)) rat.position.x += dx; else speed *= 0.9;
   if (!blocked(rat.position.x, rat.position.z + dz)) rat.position.z += dz; else speed *= 0.9;
-//   rat.position.y = Math.abs(speed) > 0.5 ? Math.abs(Math.sin(t * 14)) * 0.06 : 0;
- rat.position.y =0; // no bob
+  rat.position.y = Math.abs(speed) > 0.5 ? Math.abs(Math.sin(t * 14)) * 0.12 : 0;
 }
 
 // ── Cheese animation ─────────────────────────────────────────
@@ -519,94 +531,3 @@ window.addEventListener('keydown', e => {
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
 });
 window.addEventListener('keyup', e => { window._keys[e.key.toLowerCase()] = false; });
-
-// ── Mobile joystick controls ──────────────────────────────────
-function isMobile() {
-  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-}
-
-let joyTouchId = null;
-let joyCenterX = 0, joyCenterY = 0;
-const JOY_MAX = 50;
-const JOY_DEAD = 8;
-
-export function initDpad() {
-  if (!isMobile()) return;
-  const joy = document.getElementById('joystick');
-  if (!joy) return;
-  joy.style.display = 'block';
-
-function setKeys(dx, dy) {
-    const len = Math.sqrt(dx*dx + dy*dy);
-    if (len < JOY_DEAD) {
-      window._joyAxis = { x: 0, y: 0 };
-      return;
-    }
-    const nx = Math.max(-1, Math.min(1, dx / JOY_MAX));
-    const ny = Math.max(-1, Math.min(1, dy / JOY_MAX));
-    window._joyAxis = { x: nx, y: ny };
-  }
-
-  function moveThumb(dx, dy) {
-    const thumb = document.getElementById('joyThumb');
-    if (!thumb) return;
-    const len = Math.sqrt(dx*dx + dy*dy);
-    const clamp = Math.min(len, JOY_MAX);
-    const angle = Math.atan2(dy, dx);
-    const tx = Math.cos(angle) * clamp;
-    const ty = Math.sin(angle) * clamp;
-    thumb.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
-  }
-
-  function resetThumb() {
-    const thumb = document.getElementById('joyThumb');
-    if (thumb) thumb.style.transform = 'translate(-50%, -50%)';
-  }
-
-  // Touch start ON the joystick element only
-  joy.addEventListener('touchstart', (e) => {
-    if (joyTouchId !== null) return;
-    const touch = e.changedTouches[0];
-    joyTouchId = touch.identifier;
-    const rect = joy.getBoundingClientRect();
-    joyCenterX = rect.left + rect.width/2;
-    joyCenterY = rect.top  + rect.height/2;
-    e.preventDefault();
-    e.stopPropagation();
-    if (orbitControls) orbitControls.enabled = false;
-  }, { passive: false });
-
-  // Global touchmove — track the joystick finger anywhere
-  window.addEventListener('touchmove', (e) => {
-    if (joyTouchId === null) return;
-    for (const touch of e.changedTouches) {
-      if (touch.identifier !== joyTouchId) continue;
-      const dx = touch.clientX - joyCenterX;
-      const dy = touch.clientY - joyCenterY;
-      moveThumb(dx, dy);
-      setKeys(dx, dy);
-      e.preventDefault();
-    }
-  }, { passive: false });
-
-  window.addEventListener('touchend', (e) => {
-    if (joyTouchId === null) return;
-    for (const touch of e.changedTouches) {
-      if (touch.identifier !== joyTouchId) continue;
-      joyTouchId = null;
-      window._keys['w'] = false; window._keys['s'] = false;
-      window._keys['a'] = false; window._keys['d'] = false;
-      resetThumb();
-      if (orbitControls) orbitControls.enabled = true;
-    }
-  }, { passive: true });
-
-  window.addEventListener('touchcancel', () => {
-    if (joyTouchId === null) return;
-    joyTouchId = null;
-    window._keys['w'] = false; window._keys['s'] = false;
-    window._keys['a'] = false; window._keys['d'] = false;
-    resetThumb();
-    if (orbitControls) orbitControls.enabled = true;
-  });
-}
