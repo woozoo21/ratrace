@@ -16,12 +16,12 @@ import {
 } from './engine.js';
 
 // ── Hyperparameters for high-level routing Q-learning ─────────
-const LR        = 0.15;
+const LR        = 0.1;
 const DISCOUNT  = 0.95;
 const EPSILON_START = 1.0;
-const EPSILON_END   = 0.05;
+const EPSILON_END   = 0.01;
 const EPSILON_DECAY = 0.997;
-const EPISODES  = 2000;
+const EPISODES  = 5000;
 
 // ── BFS: returns shortest path (array of [r,c]) between two cells ──
 function bfs(grid, gw, gh, sr, sc, er, ec) {
@@ -314,20 +314,30 @@ export function tickBot(dt, playerStarted) {
     return;
   }
 
-  // Aim at the next cell (look ahead 2 cells for smoother turning)
-  // Blend between current target and next for smooth steering without cutting walls
+// Compute a smoothed target that hugs the outside of corners (avoids clipping wall corners)
   const immediateTarget = botPath[Math.min(botPathIdx + 1, botPath.length - 1)];
   const nextTarget = botPath[Math.min(botPathIdx + 2, botPath.length - 1)];
-  // Use immediate target as primary, blend ~20% toward next for smoothness
-  // Reduce lookahead when close to immediate target (avoid cutting corners)
-  const immDist = Math.sqrt(
-    (toWorldX(immediateTarget[1])-botPos.x)**2 +
-    (toWorldZ(immediateTarget[0])-botPos.z)**2
-  );
-  const blendNext = immDist > 3 ? 0.28 : 0.05; // when close, follow exact path
-  const blendImm = 1 - blendNext;
-  const tx = toWorldX(immediateTarget[1]) * blendImm + toWorldX(nextTarget[1]) * blendNext;
-  const tz = toWorldZ(immediateTarget[0]) * blendImm + toWorldZ(nextTarget[0]) * blendNext;
+  const prevCell = botPath[Math.max(botPathIdx, 0)];
+
+  // Detect if we're about to make a turn (immediate→next direction differs from prev→immediate)
+  const incomingX = immediateTarget[1] - prevCell[1];
+  const incomingZ = immediateTarget[0] - prevCell[0];
+  const outgoingX = nextTarget[1] - immediateTarget[1];
+  const outgoingZ = nextTarget[0] - immediateTarget[0];
+  const isTurning = (incomingX !== outgoingX) || (incomingZ !== outgoingZ);
+
+  // Compute target position with offset away from inside-corner wall
+  let tx = toWorldX(immediateTarget[1]);
+  let tz = toWorldZ(immediateTarget[0]);
+  if (isTurning) {
+    // Offset target diagonally OUTWARD from the corner so the rat arcs around it
+    // The "outside" of the turn is opposite to the inside corner
+    const offsetX = (incomingX + outgoingX) * 1.2; // outside direction
+    const offsetZ = (incomingZ + outgoingZ) * 1.2;
+    tx += offsetX;
+    tz += offsetZ;
+  }
+
   const dx = tx - botPos.x;
   const dz = tz - botPos.z;
   const distToTarget = Math.sqrt(dx*dx + dz*dz);
@@ -360,34 +370,25 @@ export function tickBot(dt, playerStarted) {
     const p0 = botPath[botPathIdx + i - 1];
     const p1 = botPath[botPathIdx + i];
     const p2 = botPath[botPathIdx + i + 1];
-    // Vectors p0->p1 and p1->p2
     const v1x = p1[1] - p0[1], v1z = p1[0] - p0[0];
     const v2x = p2[1] - p1[1], v2z = p2[0] - p1[0];
-    // Angle between them
     const a1 = Math.atan2(v1x, v1z);
     const a2 = Math.atan2(v2x, v2z);
     let angDiff = Math.abs(a2 - a1);
     if (angDiff > Math.PI) angDiff = 2*Math.PI - angDiff;
     if (angDiff > cornerAngle) {
       cornerAngle = angDiff;
-      // Distance from bot to that corner
       const cx = toWorldX(p1[1]);
       const cz = toWorldZ(p1[0]);
       cornerDist = Math.sqrt((cx-botPos.x)**2 + (cz-botPos.z)**2);
     }
   }
 
-  // Brake based on how sharp the upcoming corner is and how close it is
-  // The closer + sharper the corner, the more we slow down
-  if (cornerAngle > 1.2) {
-    // 90° corner ahead
-    if (cornerDist < 6)      targetSpeed = MAX_SPEED * 0.4;
-    else if (cornerDist < 10) targetSpeed = MAX_SPEED * 0.65;
-  } else if (cornerAngle > 0.7) {
-    // ~45° corner ahead
-    if (cornerDist < 5) targetSpeed = MAX_SPEED * 0.7;
+  // Only slow slightly for sharp 90° corners when very close, otherwise full speed
+  if (cornerAngle > 1.3 && cornerDist < 5) {
+    targetSpeed = MAX_SPEED * 0.75;
   }
-  // Extra slowdown when very close to current target cell (about to turn)
+    // Extra slowdown when very close to current target cell (about to turn)
   if (dCur < 3.0 && botPathIdx + 2 < botPath.length) {
     const nextCell = botPath[botPathIdx + 2];
     const ndx = toWorldX(nextCell[1]) - ctx;
@@ -413,7 +414,7 @@ export function tickBot(dt, playerStarted) {
   if (!blocked(botPos.x, botPos.z + dzMove)) botPos.z += dzMove; else botSpeed *= 0.5;
 
   // Advance path index when we get close to the current target
-  if (dCur < 2.0) {
+  if (dCur < 2.3) {
     botPathIdx++;
   }
 
