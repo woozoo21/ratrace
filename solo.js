@@ -19,6 +19,7 @@ import {
   ACCEL, FRICTION, TURN_RATE, MAX_SPEED,
 } from './engine.js';
 import { getFirestore, doc, getDoc, setDoc, getDocs, collection, query, where, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+import { createBotRat, startBot, stopBot, tickBot, isBotRunning } from './bot.js';
 
 // ── Firebase ─────────────────────────────────────────────────
 let db;
@@ -140,7 +141,7 @@ function resetRace() {
   camera.position.set(startPos.x, 18, startPos.z+22);
   orbitControls.target.set(startPos.x, 1.5, startPos.z);
   orbitControls.update();
-  updateHUD(); updateGhostHud();
+  updateHUD(); updateGhostHud(); stopBot();
 }
 
 function setLevel(key) {
@@ -259,7 +260,7 @@ function buildControls() {
     ['btnBoard','Leaderboard (L)'], ['btnFollow','Follow Cam (F): On'],
     ['btnSaveCam','Save Cam'], ['btnGhost','Ghost (G): On'],
     ['btnNight','Night Mode (N): Off'], ['btnMinimap','Minimap (M): On'],
-    ['btnMode','🏠 Menu'],
+    ['btnBot','🤖 Bot Race'], ['btnMode','🏠 Menu'],
   ].forEach(([id,txt]) => {
     const b = document.createElement('button'); b.id = id; b.textContent = txt; ctrl.appendChild(b);
   });
@@ -295,6 +296,19 @@ function buildControls() {
   };
   document.getElementById('btnMode').onclick = () => {
   window.showScreen('start');
+  };
+  document.getElementById('btnBot').onclick = (e) => {
+    if (isBotRunning()) {
+      stopBot();
+      e.target.textContent = '🤖 Bot Race';
+    } else {
+      e.target.textContent = '⏳ Training...';
+      setTimeout(() => {
+        createBotRat('#ff4444');
+        startBot(SOLO_LEVELS[levelKey].seed);
+        e.target.textContent = '🤖 Stop Bot';
+      }, 50); // small delay so UI updates before training freezes browser
+    }
   };
 
   // Save score
@@ -407,6 +421,7 @@ while (_soloAcc >= FIXED_DT) {
   _soloAcc -= FIXED_DT;
 }
 
+tickBot(dt, started);
 updateCamera(rat.position);
 
   // Collect cheese
