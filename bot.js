@@ -349,7 +349,7 @@ export function tickBot(dt, playerStarted) {
   while (yawDiff < -Math.PI) yawDiff += 2*Math.PI;
 
   // Turn toward target — faster turn rate when needed to avoid overshooting
-  const turnSpeed = TURN_RATE * 1.5; // bot can turn slightly faster than the cap
+  const turnSpeed = TURN_RATE * 1.7; // bot can turn slightly faster than the cap
   const turnAmount = Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), turnSpeed * dt);
   botYaw += turnAmount;
 
