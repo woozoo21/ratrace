@@ -424,9 +424,13 @@ while (_soloAcc >= FIXED_DT) {
 tickBot(dt, started);
 updateCamera(rat.position);
 
-  // Collect cheese
+  // Collect cheese — larger hitbox + check previous position for high-speed tunneling
   for (let i = cheeses.length-1; i>=0; i--) {
-    if (cheeses[i].position.distanceTo(rat.position) < 1.6) {
+    const cp = cheeses[i].position;
+    const distNow = cp.distanceTo(rat.position);
+    const distPrev = cp.distanceTo(lastRat);
+    // Check current frame AND interpolate between last and current position
+    if (distNow < 2.2 || distPrev < 2.2) {
       scene.remove(cheeses[i]); cheeses.splice(i,1); collected++;
     }
   }
