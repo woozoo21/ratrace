@@ -20,6 +20,7 @@ import {
 } from './engine.js';
 import { getFirestore, doc, getDoc, setDoc, getDocs, collection, query, where, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 import { createBotRat, startBot, stopBot, tickBot, isBotRunning } from './bot.js';
+import { initSplits, resetSplits, onCheeseCollected, onFinish, setGhostSplitTimes, getSplitPersonalBest, loadLeaderboardBest } from './sectors.js';
 
 // ── Firebase ─────────────────────────────────────────────────
 let db;
@@ -132,6 +133,7 @@ function resetRace() {
   const L = SOLO_LEVELS[levelKey];
   generateMaze(L.cw, L.ch, L.seed);
   spawnCheese();
+  initSplits(levelKey, cheeses.length);
   rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
   setSpeed(0); setYaw(Math.PI/2);
   collected=0; raceTime=0; finished=false; started=false; currentRun=[];
@@ -142,6 +144,7 @@ function resetRace() {
   orbitControls.target.set(startPos.x, 1.5, startPos.z);
   orbitControls.update();
   updateHUD(); updateGhostHud(); stopBot();
+  resetSplits(levelKey, cheeses.length);
 }
 
 function setLevel(key) {
@@ -149,6 +152,7 @@ function setLevel(key) {
   const L  = SOLO_LEVELS[key];
   document.getElementById('level').textContent = `Level: ${L.label}  ·  Par: ${L.par}s`;
   loadGhost(key); updateGhostHud(); resetRace();
+  loadLeaderboardBest(db, key, SOLO_LEVELS[key].cheeseCount, DAILY_SEED, collection, query, where, orderBy, limit, getDocs);
 }
 
 function updateHUD() {
@@ -167,7 +171,11 @@ async function addScore(name, time, lvl, frames) {
   if (existing.exists() && existing.data().time <= time) return;
   
   const sampled = frames.filter((_,i) => i%5===0);
-  await setDoc(ref, { name, time, lvl, weekSeed: WEEKLY_SEED, date: DAILY_SEED, frames: sampled });
+    const splits = getSplitPersonalBest();
+  await setDoc(ref, {
+    name, time, lvl, weekSeed: WEEKLY_SEED, date: DAILY_SEED, frames: sampled,
+    splits: splits.map(s => s === Infinity ? null : s),
+  });
 }
 
 async function renderBoard(lvl) {
@@ -242,6 +250,7 @@ async function renderBoard(lvl) {
       if (!snap.exists()) return;
       const data = snap.data();
       ghostRecording=data.frames; ghostBestTime=data.time; ghostOn=true;
+      setGhostSplitTimes(data.splits || []);
       document.getElementById('btnGhost').textContent='Ghost (G): On';
       updateGhostHud();
       document.getElementById('board').style.display='none';
@@ -431,7 +440,9 @@ updateCamera(rat.position);
     const distPrev = cp.distanceTo(lastRat);
     // Check current frame AND interpolate between last and current position
     if (distNow < 2.2 || distPrev < 2.2) {
-      scene.remove(cheeses[i]); cheeses.splice(i,1); collected++;
+      scene.remove(cheeses[i]); cheeses.splice(i,1);
+      onCheeseCollected(collected, raceTime);
+      collected++;
     }
   }
 
@@ -448,6 +459,7 @@ updateCamera(rat.position);
   if (!finished && nearGate && gateOpen) {
     finished = true;
     ghostRat.visible = false;
+    onFinish(raceTime);
     document.getElementById('gatehint').style.display = 'none';
     if (ghostOn && currentRun.length>0 && (ghostBestTime===null||raceTime<ghostBestTime)) {
       ghostBestTime = raceTime; ghostRecording = currentRun.slice();

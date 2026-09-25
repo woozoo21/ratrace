@@ -115,6 +115,19 @@
   border-radius: 6px; padding: 8px 10px; font-family: monospace;
   font-size: 11px; cursor: pointer; touch-action: manipulation;
 }
+.split-box {
+  background:#111; border:1px solid #333; padding:4px 8px;
+  border-radius:4px; display:flex; flex-direction:column;
+  align-items:center; min-width:64px; transition:background 0.3s, transform 0.2s;
+}
+.split-label { font-size:10px; color:#888; letter-spacing:1px; }
+.split-time  { font-size:14px; color:#fff; font-weight:bold; }
+.split-diff  { font-size:11px; min-height:14px; }
+.split-purple { background:#4a0080; border-color:#9b30ff; }
+.split-green  { background:#004a00; border-color:#00cc00; }
+.split-yellow { background:#4a3a00; border-color:#ffcc00; }
+.split-active { border-color:#fff; 
+}
 </style>
 </head>
 <div id="joystick" style="display:none;position:absolute;bottom:30px;right:30px;width:140px;height:140px;z-index:50;touch-action:none;user-select:none;-webkit-user-select:none">
@@ -167,6 +180,8 @@
 
 <div id="gameScreen">
   <button id="backBtn">← Menu</button>
+  <div id="splits" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);display:none;gap:4px;z-index:10;font-family:monospace;flex-wrap:wrap;justify-content:center;max-width:80vw"></div>
+  <div id="ghostSplits" style="position:absolute;top:90px;left:50%;transform:translateX(-50%);display:none;gap:4px;z-index:10;font-family:monospace;flex-wrap:wrap;justify-content:center;max-width:80vw"></div>
   <div id="info">
     <b>Rat Race</b> — Daily Solo<br>
     <span style="color:#9fe">Move:</span> W/S &amp; A/D &nbsp;|&nbsp; <span style="color:#9fe">Drag:</span> orbit cam<br>
