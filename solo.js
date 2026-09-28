@@ -269,11 +269,18 @@ function buildControls() {
     ['btnBoard','Leaderboard (L)'], ['btnFollow','Follow Cam (F): On'],
     ['btnSaveCam','Save Cam'], ['btnGhost','Ghost (G): On'],
     ['btnNight','Night Mode (N): Off'], ['btnMinimap','Minimap (M): On'],
-    ['btnBot','🤖 Bot Race'], ['btnMode','🏠 Menu'],
+    ['btnBot','🤖 Bot Race'], ['btnMode','🏠 Menu'], ['btnSplits','Splits: On'],
   ].forEach(([id,txt]) => {
     const b = document.createElement('button'); b.id = id; b.textContent = txt; ctrl.appendChild(b);
   });
 
+  let splitsVisible = true;
+  document.getElementById('btnSplits').onclick = (e) => {
+    splitsVisible = !splitsVisible;
+    document.getElementById('splits').style.display = splitsVisible ? 'flex' : 'none';
+    document.getElementById('ghostSplits').style.display = splitsVisible && ghostSplitTimes.length ? 'flex' : 'none';
+    e.target.textContent = `Splits: ${splitsVisible ? 'On' : 'Off'}`;
+  };
   document.getElementById('btnEasy').onclick   = () => { setLevel('easy');   document.getElementById('board').style.display='none'; };
   document.getElementById('btnMedium').onclick = () => { setLevel('medium'); document.getElementById('board').style.display='none'; };
   document.getElementById('btnHard').onclick   = () => { setLevel('hard');   document.getElementById('board').style.display='none'; };
@@ -362,6 +369,9 @@ function buildControls() {
   if (mbHard)  mbHard.onclick  = () => { setLevel('hard');   document.getElementById('board').style.display='none'; };
   if (mbBoard) mbBoard.onclick = () => { renderBoard(levelKey); document.getElementById('board').style.display='block'; };
   if (mbMenu)  mbMenu.onclick  = () => { window.showScreen('start'); };
+  if (mbMenu)  mbMenu.onclick  = () => { window.showScreen('start'); };
+  const mbSplits = document.getElementById('mbSplits');
+  if (mbSplits) mbSplits.onclick = () => { document.getElementById('btnSplits')?.click(); };
 }
 
 function handleKeys(k) {
