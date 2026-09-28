@@ -49,6 +49,7 @@ let currentRun = [];
 let ghostOn   = true, ghostRecording = null, ghostBestTime = null;
 let myName    = localStorage.getItem('ratrace_username') || null;
 let _acc      = 0;
+let splitsVisible = false;
 
 // ── Ghost ─────────────────────────────────────────────────────
 function ghostKey(lvl)  { return `${GHOST_KEY}_${lvl}`; }
@@ -274,9 +275,9 @@ function buildControls() {
     const b = document.createElement('button'); b.id = id; b.textContent = txt; ctrl.appendChild(b);
   });
 
-  let splitsVisible = true;
   document.getElementById('btnSplits').onclick = (e) => {
     splitsVisible = !splitsVisible;
+    window._splitsVisible = splitsVisible;
     document.getElementById('splits').style.display = splitsVisible ? 'flex' : 'none';
     document.getElementById('ghostSplits').style.display = splitsVisible && ghostSplitTimes.length ? 'flex' : 'none';
     e.target.textContent = `Splits: ${splitsVisible ? 'On' : 'Off'}`;

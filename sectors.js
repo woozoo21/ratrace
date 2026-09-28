@@ -101,7 +101,7 @@ function renderSplitUI(count) {
   const container = document.getElementById('splits');
   if (!container) return;
   container.innerHTML = '';
-  container.style.display = 'flex';
+  container.style.display = window._splitsVisible !== false ? 'flex' : 'none';
 
   for (let i = 0; i <= count; i++) {
     const label = i < count ? `🧀${i + 1}` : '🏁';
