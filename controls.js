@@ -1,167 +1,126 @@
-window._joyAxis = { x: 0, y: 0 };
+// ============================================================
+// CONTROLS.JS — keyboard + touch joystick → { throttle, turn }
+// ============================================================
 
-let joyTouchId = null;
-let joyOriginX = 0, joyOriginY = 0;
-const JOY_RADIUS = 80;
-const JOY_DEAD = 0.1;
+const JOY_RADIUS  = 64;     // px of thumb travel for full deflection
+const DEAD        = 0.12;   // radial dead zone (fraction of radius)
+const TURN_DEAD   = 0.15;   // extra sideways dead zone so "straight ahead" stays straight
+const REVERSE_AT  = 0.45;   // pull down past this fraction to reverse
+const ZONE        = 0.5;    // left share of the screen that drives; the rest orbits the camera
 
-let _orbitRef = null;
-export function attachOrbitControls(ctrl) { _orbitRef = ctrl; }
+const keys = new Set();
+const joy  = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+let base = null, thumb = null, surface = null;
 
-function isMobile() {
-  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-}
+// ── Keyboard ─────────────────────────────────────────────────
+const isTyping = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+const SCROLL_KEYS = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
 
-let base, thumb;
+window.addEventListener('keydown', (e) => {
+  if (isTyping(e)) return;
+  const k = e.key.toLowerCase();
+  keys.add(k);
+  if (SCROLL_KEYS.has(k)) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+// A key released while the tab is hidden never sends keyup — don't leave it stuck down.
+window.addEventListener('blur', () => { keys.clear(); releaseJoy(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); releaseJoy(); } });
 
-function ensureDom() {
-  if (base) return;
+// ── Joystick ─────────────────────────────────────────────────
+function buildJoystick() {
   base = document.createElement('div');
-  base.style.position = 'fixed';
-  base.style.display = 'none';
-  base.style.pointerEvents = 'none';
-  base.style.width = (JOY_RADIUS*2) + 'px';
-  base.style.height = (JOY_RADIUS*2) + 'px';
-  base.style.borderRadius = '50%';
-  base.style.background = 'rgba(255,255,255,0.15)';
-  base.style.border = '2px solid rgba(255,255,255,0.4)';
-  base.style.zIndex = '60';
-  base.style.marginLeft = (-JOY_RADIUS) + 'px';
-  base.style.marginTop = (-JOY_RADIUS) + 'px';
-
-  thumb = document.createElement('div');
-  thumb.style.position = 'absolute';
-  thumb.style.left = '50%';
-  thumb.style.top = '50%';
-  thumb.style.width = (JOY_RADIUS * 0.5) + 'px';
-  thumb.style.height = (JOY_RADIUS * 0.5) + 'px';
-  thumb.style.borderRadius = '50%';
-  thumb.style.background = 'rgba(255,211,90,0.7)';
-  thumb.style.border = '2px solid #ffd35a';
-  thumb.style.marginLeft = (-JOY_RADIUS * 0.25) + 'px';
-  thumb.style.marginTop = (-JOY_RADIUS * 0.25) + 'px';
-
-  base.appendChild(thumb);
-  // Reverse line indicator
-  const revLine = document.createElement('div');
-  revLine.style.position = 'absolute';
-  revLine.style.left = '15%';
-  revLine.style.right = '15%';
-  revLine.style.top = '70%';
-  revLine.style.height = '2px';
-  revLine.style.background = 'rgba(255,80,80,0.7)';
-  revLine.style.pointerEvents = 'none';
-  revLine.style.zIndex = '2';
-  base.appendChild(revLine);
-
-  const revLabel = document.createElement('div');
-  revLabel.textContent = '↓ reverse';
-  revLabel.style.position = 'absolute';
-  revLabel.style.left = '50%';
-  revLabel.style.top = '78%';
-  revLabel.style.transform = 'translateX(-50%)';
-  revLabel.style.color = 'rgba(255,80,80,0.9)';
-  revLabel.style.fontSize = '10px';
-  revLabel.style.fontFamily = 'monospace';
-  revLabel.style.pointerEvents = 'none';
-  revLabel.style.zIndex = '2';
-  base.appendChild(revLabel);
-  
-  document.body.appendChild(base);
+  base.id = 'joyBase';
+  base.innerHTML = '<div id="joyReverse"></div><div id="joyThumb"></div>';
+  thumb = base.lastChild;
+  const style = document.createElement('style');
+  style.textContent = `
+    #joyBase { position:fixed; left:${JOY_RADIUS + 28}px; bottom:${JOY_RADIUS + 28}px; top:auto;
+      width:${JOY_RADIUS * 2}px; height:${JOY_RADIUS * 2}px; margin:${-JOY_RADIUS}px;
+      border-radius:50%; background:rgba(255,255,255,0.12); border:2px solid rgba(255,255,255,0.4);
+      z-index:15; pointer-events:none; opacity:0.45; transition:opacity 0.15s; }
+    #joyBase.live { opacity:1; }
+    #joyThumb { position:absolute; left:50%; top:50%; width:${JOY_RADIUS * 0.8}px; height:${JOY_RADIUS * 0.8}px;
+      margin:${-JOY_RADIUS * 0.4}px; border-radius:50%; background:rgba(255,211,90,0.7); border:2px solid #ffd35a; }
+    #joyReverse { position:absolute; left:18%; right:18%; top:${50 + REVERSE_AT * 50}%; height:2px;
+      background:rgba(255,80,80,0.7); }
+    #joyReverse::after { content:'reverse'; position:absolute; left:0; right:0; top:3px; text-align:center;
+      color:rgba(255,120,120,0.9); font:10px monospace; }`;
+  document.head.appendChild(style);
+  surface.parentNode.appendChild(base);
 }
 
-function shouldCaptureTouch(touch) {
-  const target = document.elementFromPoint(touch.clientX, touch.clientY);
-  if (target && (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button'))) return false;
-  if (target && (target.id === 'minimap' || target.closest('#info') || target.closest('#mpHud') || target.closest('#mobileMenu'))) return false;
-  return touch.clientX < window.innerWidth / 2;
+function placeThumb(dx, dy) { thumb.style.transform = `translate(${dx}px, ${dy}px)`; }
+
+function releaseJoy() {
+  if (joy.id === null) return;
+  joy.id = null; joy.x = joy.y = 0;
+  base.classList.remove('live');
+  base.style.left = base.style.top = base.style.bottom = '';   // back to its resting corner
+  placeThumb(0, 0);
 }
 
-function showJoy(x, y) {
-  base.style.display = 'block';
-  base.style.left = x + 'px';
-  base.style.top = y + 'px';
-  thumb.style.left = '50%';
-  thumb.style.top = '50%';
+function onDown(e) {
+  if (e.pointerType === 'mouse' || joy.id !== null) return;
+  if (e.target !== surface || e.clientX > window.innerWidth * ZONE) return;
+  if (!base) buildJoystick();
+  joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.x = joy.y = 0;
+  base.classList.add('live');
+  base.style.left = e.clientX + 'px'; base.style.top = e.clientY + 'px'; base.style.bottom = 'auto';
+  placeThumb(0, 0);
+  claim(e);
 }
 
-function hideJoy() {
-  base.style.display = 'none';
+function onMove(e) {
+  if (e.pointerId !== joy.id) return;
+  let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
+  const len = Math.hypot(dx, dy);
+  if (len > JOY_RADIUS) { dx *= JOY_RADIUS / len; dy *= JOY_RADIUS / len; }
+  placeThumb(dx, dy);
+  joy.x = dx / JOY_RADIUS; joy.y = dy / JOY_RADIUS;
+  claim(e);
 }
 
-function updateJoy(dx, dy) {
-  const len = Math.sqrt(dx*dx + dy*dy);
-  const clampLen = Math.min(len, JOY_RADIUS);
-  let tx = 0, ty = 0;
-  if (len > 0) {
-    tx = (dx / len) * clampLen;
-    ty = (dy / len) * clampLen;
+function onUp(e) {
+  if (e.pointerId !== joy.id) return;
+  releaseJoy();
+  claim(e);
+}
+
+// The driving finger must never reach OrbitControls, or it would also swing the camera.
+function claim(e) { e.stopPropagation(); if (e.cancelable) e.preventDefault(); }
+
+/** @param canvas the game canvas — touches that start on its left side drive the rat. */
+export function initControls(canvas) {
+  surface = canvas;
+  const opts = { capture: true, passive: false };
+  window.addEventListener('pointerdown', onDown, opts);
+  window.addEventListener('pointermove', onMove, opts);
+  window.addEventListener('pointerup', onUp, opts);
+  window.addEventListener('pointercancel', onUp, opts);
+  // Show the resting joystick straight away on touch-first devices so it is discoverable.
+  if (window.matchMedia('(pointer: coarse)').matches) buildJoystick();
+}
+
+export const isKeyDown = (k) => keys.has(k);
+
+/** Fill `out` with the current driving input. */
+export function readInput(out) {
+  let throttle = 0, turn = 0;
+  if (keys.has('w') || keys.has('arrowup')) throttle = 1;
+  else if (keys.has('s') || keys.has('arrowdown')) throttle = -1;
+  if (keys.has('a') || keys.has('arrowleft'))  turn += 1;
+  if (keys.has('d') || keys.has('arrowright')) turn -= 1;
+
+  const mag = Math.hypot(joy.x, joy.y);
+  if (joy.id !== null && mag > DEAD) {
+    // Any push drives forward at full throttle (so steering never costs speed);
+    // pulling down past the red line reverses, harder the further you pull.
+    throttle = joy.y > REVERSE_AT ? -(joy.y - REVERSE_AT) / (1 - REVERSE_AT) * 0.6 - 0.4 : 1;
+    const ax = Math.abs(joy.x);
+    const t = ax <= TURN_DEAD ? 0 : Math.min(1, (ax - TURN_DEAD) / (0.85 - TURN_DEAD));
+    turn = -Math.sign(joy.x) * Math.pow(t, 1.4);          // gentle near centre, full lock at the rim
   }
-  thumb.style.left = `calc(50% + ${tx}px)`;
-  thumb.style.top  = `calc(50% + ${ty}px)`;
-
-  const norm = clampLen / JOY_RADIUS;
-  if (norm < JOY_DEAD) {
-    window._joyAxis = { x: 0, y: 0 };
-    return;
-  }
-  // Separate deadzone for X axis so going forward doesn't trigger small turns
-  let normX = dx / JOY_RADIUS;
-  let normY = dy / JOY_RADIUS;
-  const X_DEAD = 0.25;
-  if (Math.abs(normX) < X_DEAD) normX = 0;
-  else normX = Math.sign(normX) * (Math.abs(normX) - X_DEAD) / (1 - X_DEAD);
-  window._joyAxis = {
-    x: Math.max(-1, Math.min(1, normX)),
-    y: Math.max(-1, Math.min(1, normY)),
-  };
-}
-
-function initJoystick() {
-  if (!isMobile()) return;
-  ensureDom();
-
-  window.addEventListener('touchstart', (e) => {
-    if (joyTouchId !== null) return;
-    for (const touch of e.changedTouches) {
-      if (!shouldCaptureTouch(touch)) continue;
-      joyTouchId = touch.identifier;
-      joyOriginX = touch.clientX;
-      joyOriginY = touch.clientY;
-      showJoy(joyOriginX, joyOriginY);
-      window._joyAxis = { x: 0, y: 0 };
-      if (_orbitRef) _orbitRef.enabled = false;
-      e.preventDefault();
-      break;
-    }
-  }, { passive: false });
-
-  window.addEventListener('touchmove', (e) => {
-    if (joyTouchId === null) return;
-    for (const touch of e.changedTouches) {
-      if (touch.identifier !== joyTouchId) continue;
-      updateJoy(touch.clientX - joyOriginX, touch.clientY - joyOriginY);
-      e.preventDefault();
-      break;
-    }
-  }, { passive: false });
-
-  function endTouch(e) {
-    if (joyTouchId === null) return;
-    for (const touch of e.changedTouches) {
-      if (touch.identifier !== joyTouchId) continue;
-      joyTouchId = null;
-      window._joyAxis = { x: 0, y: 0 };
-      hideJoy();
-      if (_orbitRef) _orbitRef.enabled = true;
-      break;
-    }
-  }
-  window.addEventListener('touchend', endTouch, { passive: true });
-  window.addEventListener('touchcancel', endTouch, { passive: true });
-}
-
-export function initControls(orbitControls) {
-  attachOrbitControls(orbitControls);
-  initJoystick();
+  out.throttle = throttle; out.turn = turn;
+  return out;
 }

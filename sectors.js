@@ -1,216 +1,151 @@
 // ============================================================
-// SECTORS.JS — Cheese split timing (F1-style lap splits)
-// Each split = time between cheese collections (and start/finish)
+// SECTORS.JS — F1-style split timing
+//
+// A run has one sector per cheese plus a final sector to the gate. Sector k is
+// the time between your (k-1)th and kth pickup, whichever cheeses those were.
+//   purple = fastest sector on today's leaderboard
+//   green  = your personal best for that sector
+//   yellow = slower than your personal best
+// The optional rival row (ghost or bot) shows their sector time and the running
+// gap to them at each checkpoint.
 // ============================================================
 
-const SPLIT_KEY = 'ratrace_splits_v1';
+import { escapeHtml } from './core.js';
 
-let splitTimes    = [];   // current run split times
-let splitStarts   = [];   // race time when each split started
-let currentSplit  = 0;
-let totalCheese   = 0;
-let personalBest  = [];   // best split times ever
-let sessionBest   = [];   // best split times this session
-let levelKey      = '';
-let ghostSplitTimes = [];
+const KEY_PREFIX = 'ratrace_splits_v2_';
 
-// ── Init ──────────────────────────────────────────────────────
-export function initSplits(lvlKey, cheeseCount) {
-  levelKey     = lvlKey;
-  totalCheese  = cheeseCount;
-  currentSplit = 0;
-  splitTimes   = new Array(cheeseCount + 1).fill(0);  // +1 for finish
-  splitStarts  = new Array(cheeseCount + 1).fill(0);
-  splitStarts[0] = 0; // starts at race start
-  sessionBest  = new Array(cheeseCount + 1).fill(Infinity);
-  loadPersonalBest(cheeseCount);
-  renderSplitUI(cheeseCount);
-  ghostSplitTimes = [];
-}
+let storageKey = '';
+let count = 0;              // sectors in a run (cheeses + 1)
+let current = 0;            // sector being driven
+let lastMark = 0;           // race time when the current sector began
+let run = [];               // this run's finished sector times
+let personalBest = [];      // best time per sector, persisted per maze
+let overallBest = [];       // best per sector across today's leaderboard
+let rival = null;           // { label, splits } being raced, if any
+let visible = true;
 
-export function resetSplits(lvlKey, cheeseCount) {
-  levelKey     = lvlKey;
-  totalCheese  = cheeseCount;
-  currentSplit = 0;
-  splitTimes   = new Array(cheeseCount + 1).fill(0);
-  splitStarts  = new Array(cheeseCount + 1).fill(0);
-  ghostSplitTimes = [];
-  resetSplitDisplay();
-}
+const el = (id) => document.getElementById(id);
+const fmt = (t) => t.toFixed(3);
+const signed = (d) => (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d).toFixed(3);
 
-// ── Personal best persistence ─────────────────────────────────
-function splitStorageKey(lvl, count) { return `${SPLIT_KEY}_${lvl}_${count}`; }
-
-function loadPersonalBest(count) {
+// ── Setup ────────────────────────────────────────────────────
+/** @param key unique per maze (e.g. `${dailySeed}_${level}`) so bests never leak between mazes. */
+export function initSplits(key, cheeseCount) {
+  storageKey = KEY_PREFIX + key;
+  count = cheeseCount + 1;
+  overallBest = [];
+  rival = null;
+  personalBest = new Array(count).fill(Infinity);
   try {
-    const raw = localStorage.getItem(splitStorageKey(levelKey, count));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      personalBest = parsed.map(v => (!v || v === 0) ? Infinity : v);
-    } else {
-      personalBest = new Array(count + 1).fill(Infinity);
+    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    for (let i = 0; i < count; i++) if (saved[i] > 0) personalBest[i] = saved[i];
+  } catch { /* corrupt or unavailable storage: start fresh */ }
+  buildRows();
+  resetSplits();
+}
+
+/** Start a new run on the same maze. */
+export function resetSplits() {
+  current = 0; lastMark = 0; run = [];
+  for (let i = 0; i < count; i++) {
+    const box = el(`split-${i}`);
+    if (!box) continue;
+    box.className = 'split-box' + (i === 0 ? ' split-active' : '');
+    box.children[1].textContent = '--.---';
+    box.children[2].textContent = '';
+  }
+  renderRival();
+  if (el('splitLast')) el('splitLast').textContent = '';
+}
+
+/** Drop stored bests (and ghosts) from other days so localStorage can't fill up. */
+export function pruneStorage(prefixes, keep) {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (prefixes.some(p => k.startsWith(p)) && !k.includes(keep)) localStorage.removeItem(k);
     }
-  } catch { personalBest = new Array(count + 1).fill(Infinity); }
+  } catch { /* storage unavailable */ }
 }
 
-function savePersonalBest() {
-  try { localStorage.setItem(splitStorageKey(levelKey, totalCheese), JSON.stringify(personalBest)); } catch {}
-}
+// ── Timing ───────────────────────────────────────────────────
+/** Close the current sector at `raceTime` (call on every cheese pickup and at the finish). */
+export function markSplit(raceTime) {
+  if (current >= count) return;
+  const idx = current++, t = raceTime - lastMark;
+  lastMark = raceTime;
+  run.push(t);
 
-export function getSplitPersonalBest() { return personalBest; }
-
-// ── Called every time a cheese is collected ───────────────────
-export function onCheeseCollected(cheeseIdx, raceTime) {
-  if (currentSplit !== cheeseIdx) return; // out of order, ignore
-  completeSplit(cheeseIdx, raceTime);
-  currentSplit++;
-  splitStarts[currentSplit] = raceTime;
-}
-
-// ── Called when player crosses finish ─────────────────────────
-export function onFinish(raceTime) {
-  completeSplit(totalCheese, raceTime); // final split = last cheese → finish
-  savePersonalBest();
-}
-
-function completeSplit(idx, raceTime) {
-  const t = raceTime - splitStarts[idx];
-  splitTimes[idx] = t;
-
-  let color = 'yellow';
-  if (t < personalBest[idx]) {
+  const before = personalBest[idx];
+  const overall = overallBest[idx] > 0 ? overallBest[idx] : Infinity;
+  const color = t < before && t < overall && overall !== Infinity ? 'purple' : t < before ? 'green' : 'yellow';
+  if (t < before) {
     personalBest[idx] = t;
-    color = 'green';
-  }
-  if (leaderboardBest.length > idx && t < leaderboardBest[idx]) {
-    leaderboardBest[idx] = t;
-    color = 'purple';
-  }
-  if (t > personalBest[idx]) {
-    color = 'yellow';
+    try { localStorage.setItem(storageKey, JSON.stringify(personalBest.map(v => (v === Infinity ? 0 : v)))); } catch { /* full */ }
   }
 
-  updateSplitBox(idx, t, color);
-  if (ghostSplitTimes.length > idx && ghostSplitTimes[idx] !== null) {
-    updateGhostComparison(idx, t);
+  const delta = before === Infinity ? '' : signed(t - before);
+  const box = el(`split-${idx}`);
+  if (box) {
+    box.className = `split-box split-${color}`;
+    box.children[1].textContent = fmt(t);
+    box.children[2].textContent = color === 'purple' ? 'BEST' : delta;
+    el(`split-${idx + 1}`)?.classList.add('split-active');
   }
+  let summary = `${sectorLabel(idx)} ${fmt(t)}` + (delta ? `  ${delta}` : '');
+
+  if (rival && rival.splits[idx] != null) {
+    let rivalAt = 0;
+    for (let i = 0; i <= idx; i++) rivalAt += rival.splits[i] || 0;
+    const gap = raceTime - rivalAt;                        // negative = ahead of the rival
+    const rbox = el(`rival-${idx}`);
+    if (rbox) {
+      rbox.className = 'split-box ' + (gap <= 0 ? 'split-green' : 'split-red');
+      rbox.children[2].textContent = signed(gap);
+    }
+    summary += `  ·  ${rival.label} ${signed(gap)}`;
+  }
+  if (el('splitLast')) el('splitLast').textContent = summary;
 }
 
-// ── UI ────────────────────────────────────────────────────────
-function renderSplitUI(count) {
-  const container = document.getElementById('splits');
-  if (!container) return;
-  container.innerHTML = '';
-  container.style.display = window._splitsVisible !== false ? 'flex' : 'none';
+/** Sector times of the current run so far. */
+export const getRunSplits = () => run.slice();
 
-  for (let i = 0; i <= count; i++) {
-    const label = i < count ? `🧀${i + 1}` : '🏁';
-    const box = document.createElement('div');
-    box.className = 'split-box' + (i === 0 ? ' split-active' : '');
-    box.id = `split-box-${i}`;
-    box.innerHTML = `
-      <span class="split-label">${label}</span>
-      <span class="split-time" id="split-time-${i}">--.---</span>
-      <span class="split-diff" id="split-diff-${i}"></span>
-    `;
-    container.appendChild(box);
-  }
+/** Best sector times across the leaderboard, for purple sectors. */
+export function setOverallBest(times) { overallBest = times || []; }
+
+/** Race against someone's sector times (`null` clears the rival row). */
+export function setRival(label, splits) {
+  rival = splits && splits.length === count ? { label, splits } : null;
+  renderRival();
 }
 
-function updateSplitBox(idx, time, color) {
-  const box     = document.getElementById(`split-box-${idx}`);
-  const timeEl  = document.getElementById(`split-time-${idx}`);
-  const diffEl  = document.getElementById(`split-diff-${idx}`);
-  const nextBox = document.getElementById(`split-box-${idx + 1}`);
-  if (!box || !timeEl) return;
-
-  box.className   = `split-box split-${color}`;
-  timeEl.textContent = time.toFixed(3);
-
-  // Diff vs personal best
-  const pb = personalBest[idx];
-  if (color === 'purple') {
-    diffEl.textContent = 'BEST';
-    diffEl.style.color = '#9b30ff';
-  } else if (pb !== Infinity) {
-    const diff = time - pb;
-    diffEl.textContent = (diff > 0 ? '+' : '') + diff.toFixed(3);
-    diffEl.style.color = diff > 0 ? '#ffcc00' : '#00cc00';
-  }
-
-  // Flash
-  box.style.transform = 'scale(1.1)';
-  setTimeout(() => { box.style.transform = 'scale(1)'; }, 200);
-
-  // Highlight next split as active
-  if (nextBox) {
-    nextBox.classList.remove('split-active');
-    nextBox.classList.add('split-active');
-  }
+export function setSplitsVisible(on) {
+  visible = on;
+  if (el('splits')) el('splits').style.display = on ? 'flex' : 'none';
 }
 
-function resetSplitDisplay() {
-  const container = document.getElementById('splits');
-  if (!container) return;
-  container.querySelectorAll('.split-box').forEach((box, i) => {
-    box.className = 'split-box' + (i === 0 ? ' split-active' : '');
-    const timeEl = box.querySelector('.split-time');
-    const diffEl = box.querySelector('.split-diff');
-    if (timeEl) timeEl.textContent = '--.---';
-    if (diffEl) diffEl.textContent = '';
-  });
+// ── DOM ──────────────────────────────────────────────────────
+const sectorLabel = (i) => (i < count - 1 ? `🧀${i + 1}` : '🏁');
+
+function boxHtml(id, label, time) {
+  return `<div class="split-box" id="${id}"><span class="split-label">${label}</span>` +
+         `<span class="split-time">${time}</span><span class="split-diff"></span></div>`;
 }
 
-// ── Ghost splits ──────────────────────────────────────────────
-export function setGhostSplitTimes(times) {
-  ghostSplitTimes = times || [];
-  // Show ghost times in the ghost row
-  const ghostRow = document.getElementById('ghostSplits');
-  if (!ghostRow) return;
-  ghostRow.innerHTML = '';
-  ghostRow.style.display = ghostSplitTimes.length ? 'flex' : 'none';
-  ghostSplitTimes.forEach((t, i) => {
-    const label = i < ghostSplitTimes.length - 1 ? `G🧀${i+1}` : 'G🏁';
-    const box = document.createElement('div');
-    box.className = 'split-box';
-    box.id = `ghost-split-box-${i}`;
-    box.innerHTML = `
-      <span class="split-label" style="color:#aef">${label}</span>
-      <span class="split-time" id="ghost-split-time-${i}">${t !== null ? t.toFixed(3) : '--.---'}</span>
-      <span class="split-diff" id="ghost-split-diff-${i}"></span>
-    `;
-    ghostRow.appendChild(box);
-  });
+function buildRows() {
+  const root = el('splits');
+  if (!root) return;
+  let mine = '';
+  for (let i = 0; i < count; i++) mine += boxHtml(`split-${i}`, sectorLabel(i), '--.---');
+  root.innerHTML = `<div class="split-row">${mine}</div><div class="split-row" id="rivalRow"></div><div id="splitLast"></div>`;
+  root.style.display = visible ? 'flex' : 'none';
 }
 
-function updateGhostComparison(idx, myTime) {
-  const gt    = ghostSplitTimes[idx];
-  const gbox  = document.getElementById(`ghost-split-box-${idx}`);
-  const gdiff = document.getElementById(`ghost-split-diff-${idx}`);
-  if (!gbox || gt === null || gt === undefined) return;
-  const diff = gt - myTime; // positive = ghost slower
-  if (diff > 0) {
-    gbox.className = 'split-box split-yellow';
-    gdiff.textContent = '+' + diff.toFixed(3);
-    gdiff.style.color = '#ffcc00';
-  } else {
-    gbox.className = 'split-box split-purple';
-    gdiff.textContent = diff.toFixed(3);
-    gdiff.style.color = '#9b30ff';
-  }
-}
-let leaderboardBest = [];
-
-export async function loadLeaderboardBest(db, lvl, cheeseCount, DAILY_SEED, collection, query, where, orderBy, limit, getDocs) {
-  try {
-    const q = query(collection(db,'scores'), where('lvl','==',lvl), where('date','==',DAILY_SEED), orderBy('time'), limit(50));
-    const snap = await getDocs(q);
-    leaderboardBest = new Array(cheeseCount + 1).fill(Infinity);
-    snap.forEach(d => {
-      const splits = d.data().splits || [];
-      splits.forEach((t, i) => {
-        if (t !== null && t < leaderboardBest[i]) leaderboardBest[i] = t;
-      });
-    });
-  } catch { leaderboardBest = []; }
+function renderRival() {
+  const row = el('rivalRow');
+  if (!row) return;
+  let html = '';
+  if (rival) for (let i = 0; i < count; i++) html += boxHtml(`rival-${i}`, i ? '' : escapeHtml(rival.label), fmt(rival.splits[i] || 0));
+  row.innerHTML = html;
 }

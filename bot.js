@@ -1,428 +1,285 @@
 // ============================================================
-// BOT.JS — Hierarchical RL agent
-// High-level: Q-learning learns optimal cheese-visit order
-// Low-level: BFS computes shortest path between waypoints
-// Movement: Same physics as player (accel, max speed, turn rate)
+// BOT.JS — benchmark run planner (pure: no THREE / DOM)
+//
+// 1. Route:  exact shortest cheese order (Held-Karp dynamic programming).
+// 2. Line:   each leg's cell path is pulled taut inside the corridor.
+// 3. Driver: pure-pursuit steering + brake-distance speed planning, run
+//            through the *same* stepVehicle() physics as the player.
+// 4. Tuning: a seeded search over driver parameters keeps the fastest run.
+//
+// The result is a recording ({time, frames, splits}) that is replayed like a
+// ghost, so it is frame-rate independent and a human could match it.
 // ============================================================
 
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-  scene, rat, MODEL_URL, MODEL_SCALE, MODEL_Y, MODEL_FACE,
-  getGW, getGH, getGrid, cheeses,
-  toWorldX, toWorldZ,
-  ACCEL, TURN_RATE, MAX_SPEED, FRICTION,
-  blocked,
-} from './engine.js';
+  TURN_RATE, MAX_SPEED, FIXED_DT, RAT_RADIUS, CHEESE_RADIUS, GATE_RADIUS,
+  makeRNG, bfs, pathTo, isOpen, blocked, cellX, cellZ, colOf, rowOf,
+  makeVehicle, stepVehicle, wrapAngle,
+} from './core.js';
 
-// ── Hyperparameters for high-level routing Q-learning ─────────
-const LR        = 0.1;
-const DISCOUNT  = 0.95;
-const EPSILON_START = 1.0;
-const EPSILON_END   = 0.01;
-const EPSILON_DECAY = 0.997;
-const EPISODES  = 5000;
+const MAX_SIM_TIME = 240;   // seconds of simulated racing before a candidate is abandoned
+const STALL_TIME   = 45;    // …or this long without collecting anything
+const RECORD_EVERY = 2;     // ticks between recorded frames
+const SEARCH_RUNS  = 140;   // driver-parameter candidates tried per plan
 
-// ── BFS: returns shortest path (array of [r,c]) between two cells ──
-function bfs(grid, gw, gh, sr, sc, er, ec) {
-  const prev = Array.from({length:gh}, ()=>Array(gw).fill(null));
-  const queue = [[sr, sc]];
-  prev[sr][sc] = [-1, -1];
-  while (queue.length) {
-    const [r, c] = queue.shift();
-    if (r === er && c === ec) break;
-    for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-      const nr = r+dr, nc = c+dc;
-      if (nr>=0 && nr<gh && nc>=0 && nc<gw && !grid[nr][nc] && !prev[nr][nc]) {
-        prev[nr][nc] = [r, c];
-        queue.push([nr, nc]);
-      }
-    }
-  }
-  if (!prev[er][ec]) return null;
-  // Reconstruct
-  const path = [];
-  let cur = [er, ec];
-  while (cur[0] !== sr || cur[1] !== sc) {
-    path.unshift(cur);
-    cur = prev[cur[0]][cur[1]];
-    if (!cur) break;
-  }
-  path.unshift([sr, sc]);
-  return path;
-}
+const DEFAULTS = {   // medians of the best parameters found across many mazes
+  look0: 2, lookV: 0.15, kp: 7, cornerK: 11, brake: 31, tipDead: 15, tipOpen: 7,
+  revIn: 2.25, revOut: 1.35, margin: 0.34, iters: 26, errK: 0.17,
+};
+const RANGES = {
+  look0: [1.5, 5], lookV: [0, 0.25], kp: [2, 10], cornerK: [1.5, 16], brake: [15, 40],
+  tipDead: [3, 24], tipOpen: [2, 14], revIn: [1.6, 3.3], revOut: [0.5, 1.5],
+  margin: [0.05, 0.5], iters: [5, 60], errK: [0, 0.6],
+};
 
-// ── Compute distance matrix between all waypoints ─────────────
-function buildDistanceMatrix(waypoints, grid, gw, gh) {
-  const n = waypoints.length;
-  const dist = Array.from({length:n}, () => new Array(n).fill(Infinity));
-  const paths = Array.from({length:n}, () => new Array(n).fill(null));
-  for (let i = 0; i < n; i++) {
+// ── Route: optimal visiting order ────────────────────────────
+// cost is (n+2)×(n+2): index 0 = start, 1..n = cheeses, n+1 = finish.
+function bestOrder(n, cost) {
+  if (n === 0) return [];
+  if (n > 15) return greedyOrder(n, cost);
+  const full = 1 << n;
+  const dp  = new Float64Array(full * n).fill(Infinity);
+  const par = new Int8Array(full * n).fill(-1);
+  for (let j = 0; j < n; j++) dp[(1 << j) * n + j] = cost[0][j + 1];
+  for (let mask = 1; mask < full; mask++) {
     for (let j = 0; j < n; j++) {
-      if (i === j) { dist[i][j] = 0; continue; }
-      const p = bfs(grid, gw, gh, waypoints[i].r, waypoints[i].c, waypoints[j].r, waypoints[j].c);
-      if (p) { dist[i][j] = p.length - 1; paths[i][j] = p; }
+      if (!(mask & (1 << j))) continue;
+      const cur = dp[mask * n + j];
+      if (cur === Infinity) continue;
+      const row = cost[j + 1];
+      for (let k = 0; k < n; k++) {
+        if (mask & (1 << k)) continue;
+        const idx = (mask | (1 << k)) * n + k, val = cur + row[k + 1];
+        if (val < dp[idx]) { dp[idx] = val; par[idx] = j; }
+      }
     }
   }
-  return { dist, paths };
+  let end = 0, best = Infinity;
+  for (let j = 0; j < n; j++) {
+    const val = dp[(full - 1) * n + j] + cost[j + 1][n + 1];
+    if (val < best) { best = val; end = j; }
+  }
+  const order = [];
+  for (let mask = full - 1, j = end; j !== -1;) {
+    order.push(j);
+    const p = par[mask * n + j];
+    mask ^= 1 << j; j = p;
+  }
+  return order.reverse();
 }
 
-// ── Q-learning: learn optimal cheese visit order ──────────────
-// State: (currentWaypointIndex, bitmaskOfVisitedCheeses)
-// Action: which cheese (or finish) to visit next
-function trainRoutingQ(numCheese, dist) {
-  // Indices: 0 = start, 1..numCheese = cheeses, numCheese+1 = finish
-  const startIdx  = 0;
-  const finishIdx = numCheese + 1;
-  const fullMask  = (1 << numCheese) - 1; // all cheese collected
-  const numActions = numCheese + 2; // can choose any waypoint (we'll mask invalid ones)
-
-  // State key: `${currentIdx}_${mask}`
-  const Q = new Map();
-  const qGet = (s, a) => {
-    const arr = Q.get(s);
-    return arr ? arr[a] : 0;
-  };
-  const qSet = (s, a, v) => {
-    if (!Q.has(s)) Q.set(s, new Float32Array(numActions));
-    Q.get(s)[a] = v;
-  };
-
-  // Valid actions: any cheese not yet visited, or finish if all cheeses visited
-  const validActions = (cur, mask) => {
-    const acts = [];
-    for (let i = 1; i <= numCheese; i++) {
-      if (i === cur) continue;
-      if (!(mask & (1 << (i-1)))) acts.push(i);
-    }
-    if (mask === fullMask) acts.push(finishIdx);
-    return acts;
-  };
-
-  let epsilon = EPSILON_START;
-
-  for (let ep = 0; ep < EPISODES; ep++) {
-    let cur = startIdx;
-    let mask = 0;
-    let totalReward = 0;
-
-    while (true) {
-      const acts = validActions(cur, mask);
-      if (acts.length === 0) break;
-
-      let a;
-      const stateKey = `${cur}_${mask}`;
-      if (Math.random() < epsilon) {
-        a = acts[(Math.random() * acts.length) | 0];
-      } else {
-        // Best valid action
-        let best = acts[0], bestQ = qGet(stateKey, acts[0]);
-        for (const act of acts) {
-          const v = qGet(stateKey, act);
-          if (v > bestQ) { bestQ = v; best = act; }
-        }
-        a = best;
-      }
-
-      // Reward = strongly penalize travel time + cheese bonus + finish bonus
-      // Heavily weight travel cost so the agent goes for nearest cheese first
-      const travel = dist[cur][a];
-      let reward = -travel * 2;  // double travel penalty
-      if (a >= 1 && a <= numCheese) reward += 30;
-      if (a === finishIdx) reward += 200;       // reached the finish
-
-      let newMask = mask;
-      if (a >= 1 && a <= numCheese) newMask = mask | (1 << (a-1));
-
-      const nextStateKey = `${a}_${newMask}`;
-      const nextActs = validActions(a, newMask);
-      let maxNextQ = 0;
-      if (nextActs.length) {
-        maxNextQ = qGet(nextStateKey, nextActs[0]);
-        for (const na of nextActs) {
-          const v = qGet(nextStateKey, na);
-          if (v > maxNextQ) maxNextQ = v;
-        }
-      }
-
-      const oldQ = qGet(stateKey, a);
-      qSet(stateKey, a, oldQ + LR * (reward + DISCOUNT * maxNextQ - oldQ));
-
-      totalReward += reward;
-      cur = a;
-      mask = newMask;
-      if (a === finishIdx) break;
-    }
-    epsilon = Math.max(EPSILON_END, epsilon * EPSILON_DECAY);
-  }
-
-  // Extract greedy policy
-  const order = [];
-  let cur = startIdx, mask = 0;
-  while (true) {
-    const acts = validActions(cur, mask);
-    if (acts.length === 0) break;
-    let best = acts[0], bestQ = qGet(`${cur}_${mask}`, acts[0]);
-    for (const a of acts) {
-      const v = qGet(`${cur}_${mask}`, a);
-      if (v > bestQ) { bestQ = v; best = a; }
-    }
-    order.push(best);
-    if (best >= 1 && best <= numCheese) mask |= (1 << (best-1));
-    cur = best;
-    if (best === finishIdx) break;
+function greedyOrder(n, cost) {
+  const order = [], used = new Uint8Array(n);
+  let cur = 0;
+  for (let step = 0; step < n; step++) {
+    let best = -1;
+    for (let k = 0; k < n; k++) if (!used[k] && (best === -1 || cost[cur][k + 1] < cost[cur][best + 1])) best = k;
+    used[best] = 1; order.push(best); cur = best + 1;
   }
   return order;
 }
 
-// ── Build full cell-by-cell path through chosen waypoint order ─
-function buildFullPath(order, waypoints, paths) {
-  let cur = 0; // start
-  const full = [];
-  for (const next of order) {
-    const segment = paths[cur][next];
-    if (!segment) continue;
-    if (full.length > 0) full.push(...segment.slice(1));
-    else full.push(...segment);
-    cur = next;
+function countTurns(cells) {
+  let turns = 0;
+  for (let i = 2; i < cells.length; i++) {
+    if (cells[i].r - cells[i - 1].r !== cells[i - 1].r - cells[i - 2].r ||
+        cells[i].c - cells[i - 1].c !== cells[i - 1].c - cells[i - 2].c) turns++;
   }
-  return full;
+  return turns;
 }
 
-// ── Bot state ─────────────────────────────────────────────────
-let botRat = null;
-let botPath = [];        // array of [r, c] cells to walk through
-let botPathIdx = 0;
-let botPos = new THREE.Vector3();
-let botYaw = 0;
-let botSpeed = 0;
-let botRunning = false;
-let botStarted = false;
-let botCheesePositions = []; // world positions of cheese collected
-let trainedCount = 0;
+// ── Planner ──────────────────────────────────────────────────
+/**
+ * @param maze         core.js maze
+ * @param cheeseCells  [{r,c}, …] cheeses to collect before the finish
+ * @param seed         makes the parameter search repeatable (same maze → same bot)
+ * @returns {{time:number, frames:Array, splits:number[]}|null}
+ */
+export function planBotRun(maze, cheeseCells, seed = 1) {
+  const n = cheeseCells.length;
+  const { gw } = maze;
+  const cheeseX = cheeseCells.map(p => cellX(maze, p.c));
+  const cheeseZ = cheeseCells.map(p => cellZ(maze, p.r));
+  const finX = cellX(maze, maze.finish.c), finZ = cellZ(maze, maze.finish.r);
 
-// ── Train and get path ────────────────────────────────────────
-export function trainBot() {
-  const gw = getGW(), gh = getGH(), grid = getGrid();
-  const cheeseCells = cheeses.map(c => {
-    return {
-      r: Math.round(c.position.z / 4 + (gh - 1) / 2),
-      c: Math.round(c.position.x / 4 + (gw - 1) / 2),
+  const searches = new Map();
+  const searchFrom = (r, c) => {
+    const key = r * gw + c;
+    let s = searches.get(key);
+    if (!s) { s = bfs(maze, r, c); searches.set(key, s); }
+    return s;
+  };
+  const route = (a, b) => pathTo(maze, searchFrom(a.r, a.c), b.r, b.c);
+
+  // Candidate orders: shortest by distance, and with corners costed as extra cells.
+  const waypoints = [maze.start, ...cheeseCells, maze.finish];
+  const legs = waypoints.map(a => waypoints.map(b => route(a, b)));
+  if (legs[0].some(p => !p)) return null;                    // something is unreachable
+  const orders = new Map();
+  for (const turnCost of [0, 1, 2.5]) {
+    const cost = legs.map(row => row.map(p => p.length - 1 + turnCost * countTurns(p)));
+    const order = bestOrder(n, cost);
+    orders.set(order.join(','), order);
+  }
+
+  // ── Leg path: taut line through the corridor ───────────────
+  function buildPath(v, P, target, next, tx, tz) {
+    const here = { r: rowOf(maze, v.z), c: colOf(maze, v.x) };
+    const a = route(here, target);
+    if (!a) return null;
+    let cells = a, reversal = false;
+    if (next) {
+      const b = route(target, next);
+      reversal = b.length > 1 && a.length > 1 &&
+                 b[1].r === a[a.length - 2].r && b[1].c === a[a.length - 2].c;
+      if (!reversal) cells = a.concat(b.slice(1));
+    }
+
+    // Raw polyline: current position, then cell centres, subdivided to ~1 unit.
+    const px = [v.x], pz = [v.z];
+    let pin = -1;                                            // point that must stay on the cheese
+    const push = (x, z) => {
+      const lx = px[px.length - 1], lz = pz[pz.length - 1];
+      const steps = Math.max(1, Math.ceil(Math.hypot(x - lx, z - lz)));
+      for (let k = 1; k <= steps; k++) { px.push(lx + (x - lx) * k / steps); pz.push(lz + (z - lz) * k / steps); }
     };
-  });
+    if (cells.length === 1) push(cellX(maze, cells[0].c), cellZ(maze, cells[0].r));
+    for (let i = 1; i < cells.length; i++) {
+      push(cellX(maze, cells[i].c), cellZ(maze, cells[i].r));
+      if (i === a.length - 1 && cells !== a) pin = px.length - 1;
+    }
 
-  // Waypoints: [start, ...cheeses, finish]
-  const waypoints = [
-    { r: 1, c: 1 },
-    ...cheeseCells,
-    { r: gh-2, c: gw-2 },
-  ];
-
-  console.log('Bot waypoints:', waypoints.length, '(1 start +', cheeseCells.length, 'cheese + 1 finish)');
-
-  // Build distance matrix using BFS
-  const { dist, paths } = buildDistanceMatrix(waypoints, grid, gw, gh);
-
-  // Train Q-learning to find optimal visit order
-  const order = trainRoutingQ(cheeseCells.length, dist);
-  console.log('Optimal order:', order);
-
-  // Build full cell-by-cell path
-  botPath = buildFullPath(order, waypoints, paths);
-  console.log('Full path length:', botPath.length);
-  trainedCount++;
-  return botPath;
-}
-
-// ── Create bot rat model ──────────────────────────────────────
-export function createBotRat(color = '#ff4444') {
-  if (botRat) { scene.remove(botRat); botRat = null; }
-  botRat = new THREE.Group();
-  new GLTFLoader().load(MODEL_URL, (gltf) => {
-    const m = gltf.scene;
-    m.scale.setScalar(MODEL_SCALE); m.rotation.y = MODEL_FACE; m.position.y = MODEL_Y;
-    m.traverse(o => {
-      if (o.isMesh) {
-        if (Array.isArray(o.material)) {
-          o.material = o.material.map(mat => {
-            const m2 = mat.clone();
-            m2.color.lerp(new THREE.Color(color), 0.7);
-            m2.side = THREE.DoubleSide;
-            return m2;
-          });
-        } else {
-          o.material = o.material.clone();
-          o.material.color.lerp(new THREE.Color(color), 0.7);
-          o.material.side = THREE.DoubleSide;
-        }
-        o.castShadow = true;
+    const N = px.length, rad = RAT_RADIUS + P.margin, pinR = CHEESE_RADIUS - 0.6;
+    for (let it = 0; it < P.iters; it++) {
+      for (let i = 1; i < N - 1; i++) {
+        const nx = px[i] + 0.5 * ((px[i - 1] + px[i + 1]) / 2 - px[i]);
+        const nz = pz[i] + 0.5 * ((pz[i - 1] + pz[i + 1]) / 2 - pz[i]);
+        if (i === pin && Math.hypot(nx - tx, nz - tz) > pinR) continue;
+        if (!blocked(maze, nx, nz, rad)) { px[i] = nx; pz[i] = nz; }
       }
-    });
-    botRat.add(m);
-  });
-  scene.add(botRat);
-}
-
-export function startBot() {
-  trainBot();
-  botPathIdx = 0;
-  botRunning = true;
-  botStarted = false;
-  botSpeed = 0;
-  if (botRat && botPath.length > 0) {
-    const first = botPath[0];
-    botPos.set(toWorldX(first[1]), 0, toWorldZ(first[0]));
-    botRat.position.copy(botPos);
-    botYaw = Math.PI/2;
-    botRat.rotation.y = botYaw;
-    botRat.visible = true;
-  }
-}
-
-export function stopBot() {
-  botRunning = false;
-  if (botRat) botRat.visible = false;
-}
-
-export function isBotRunning() { return botRunning; }
-
-// ── Tick: physics-based movement matching player ─────────────
-export function tickBot(dt, playerStarted) {
-  if (!botRunning || !botRat || botPath.length === 0) return;
-
-  if (!playerStarted) {
-    // Hold at start
-    if (botPath.length > 0) {
-      const first = botPath[0];
-      botPos.set(toWorldX(first[1]), 0, toWorldZ(first[0]));
-      botRat.position.copy(botPos);
     }
-    return;
-  }
-  botStarted = true;
 
-  // Skip cells that are very close, to advance to the next meaningful target
-  if (botPathIdx >= botPath.length - 1) {
-    // Reached end, decelerate
-    botSpeed -= FRICTION * dt * Math.sign(botSpeed);
-    if (Math.abs(botSpeed) < 0.1) botSpeed = 0;
-    if (botSpeed > 0) {
-      botPos.x += Math.sin(botYaw) * botSpeed * dt;
-      botPos.z += Math.cos(botYaw) * botSpeed * dt;
+    // Arc length + a speed cap per point from how sharply the line bends there.
+    const s = new Float64Array(N), vmax = new Float64Array(N).fill(MAX_SPEED);
+    for (let i = 1; i < N; i++) s[i] = s[i - 1] + Math.hypot(px[i] - px[i - 1], pz[i] - pz[i - 1]);
+    for (let i = 1; i < N - 1; i++) {
+      const bend = Math.abs(wrapAngle(
+        Math.atan2(px[i + 1] - px[i], pz[i + 1] - pz[i]) - Math.atan2(px[i] - px[i - 1], pz[i] - pz[i - 1])));
+      const ds = (s[i + 1] - s[i - 1]) / 2;
+      if (bend > 1e-3 && ds > 1e-6) vmax[i] = Math.min(MAX_SPEED, P.cornerK * TURN_RATE * ds / bend);
     }
-    botRat.position.copy(botPos);
-    return;
-  }
-
-// Compute a smoothed target that hugs the outside of corners (avoids clipping wall corners)
-  const immediateTarget = botPath[Math.min(botPathIdx + 1, botPath.length - 1)];
-  const nextTarget = botPath[Math.min(botPathIdx + 2, botPath.length - 1)];
-  const prevCell = botPath[Math.max(botPathIdx, 0)];
-
-  // Detect if we're about to make a turn (immediate→next direction differs from prev→immediate)
-  const incomingX = immediateTarget[1] - prevCell[1];
-  const incomingZ = immediateTarget[0] - prevCell[0];
-  const outgoingX = nextTarget[1] - immediateTarget[1];
-  const outgoingZ = nextTarget[0] - immediateTarget[0];
-  const isTurning = (incomingX !== outgoingX) || (incomingZ !== outgoingZ);
-
-  // Compute target position with offset away from inside-corner wall
-  let tx = toWorldX(immediateTarget[1]);
-  let tz = toWorldZ(immediateTarget[0]);
-  if (isTurning) {
-    // Offset target diagonally OUTWARD from the corner so the rat arcs around it
-    // The "outside" of the turn is opposite to the inside corner
-    const offsetX = (incomingX + outgoingX) * 1.2; // outside direction
-    const offsetZ = (incomingZ + outgoingZ) * 1.2;
-    tx += offsetX;
-    tz += offsetZ;
-  }
-
-  const dx = tx - botPos.x;
-  const dz = tz - botPos.z;
-  const distToTarget = Math.sqrt(dx*dx + dz*dz);
-
-  // Compute desired yaw to face target
-  const desiredYaw = Math.atan2(dx, dz);
-  let yawDiff = desiredYaw - botYaw;
-  while (yawDiff > Math.PI) yawDiff -= 2*Math.PI;
-  while (yawDiff < -Math.PI) yawDiff += 2*Math.PI;
-
-  // Turn toward target — faster turn rate when needed to avoid overshooting
-  const turnSpeed = TURN_RATE * 1.7; // bot can turn slightly faster than the cap
-  const turnAmount = Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), turnSpeed * dt);
-  botYaw += turnAmount;
-
-  // Current target cell (needed for both slowdown and advance logic)
-  const curTarget = botPath[botPathIdx + 1];
-  const ctx = toWorldX(curTarget[1]);
-  const ctz = toWorldZ(curTarget[0]);
-  const dCur = Math.sqrt((ctx-botPos.x)**2 + (ctz-botPos.z)**2);
-
-  
-  // Slow down before corners - look ahead to see if next cell requires a turn
-  const turnSharpness = Math.abs(yawDiff);
-  // Look ahead at the next several cells to see if a sharp turn is coming
-  let targetSpeed = MAX_SPEED;
-  let cornerAngle = 0;
-  let cornerDist = Infinity;
-  for (let i = 1; i <= 4 && botPathIdx + i + 1 < botPath.length; i++) {
-    const p0 = botPath[botPathIdx + i - 1];
-    const p1 = botPath[botPathIdx + i];
-    const p2 = botPath[botPathIdx + i + 1];
-    const v1x = p1[1] - p0[1], v1z = p1[0] - p0[0];
-    const v2x = p2[1] - p1[1], v2z = p2[0] - p1[0];
-    const a1 = Math.atan2(v1x, v1z);
-    const a2 = Math.atan2(v2x, v2z);
-    let angDiff = Math.abs(a2 - a1);
-    if (angDiff > Math.PI) angDiff = 2*Math.PI - angDiff;
-    if (angDiff > cornerAngle) {
-      cornerAngle = angDiff;
-      const cx = toWorldX(p1[1]);
-      const cz = toWorldZ(p1[0]);
-      cornerDist = Math.sqrt((cx-botPos.x)**2 + (cz-botPos.z)**2);
+    if (reversal) {
+      // The next leg doubles back: arrive at the pickup point slow enough to turn round.
+      let open = 0;
+      for (const [dr, dc] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) if (isOpen(maze, target.r + dr, target.c + dc)) open++;
+      const tip = open === 1 ? P.tipDead : P.tipOpen;
+      for (let i = 0; i < N; i++) {
+        if (Math.hypot(px[i] - tx, pz[i] - tz) <= CHEESE_RADIUS - 0.1) { vmax[i] = Math.min(vmax[i], tip); break; }
+      }
     }
+    return { px, pz, s, vmax, N, idx: 0 };
   }
 
-  // Only slow slightly for sharp 90° corners when very close, otherwise full speed
-  if (cornerAngle > 1.3 && cornerDist < 5) {
-    targetSpeed = MAX_SPEED * 0.75;
+  // ── One simulated run ──────────────────────────────────────
+  function simulate(order, P, record) {
+    const v = makeVehicle(maze);
+    const input = { throttle: 0, turn: 0 };
+    const got = new Uint8Array(n);
+    const pickups = [], frames = record ? [{ t: 0, x: v.x, z: v.z, yaw: v.yaw }] : null;
+    let left = n, oi = 0, path = null, rev = false, t = 0, tick = 0, lastEvent = 0;
+
+    while (t < MAX_SIM_TIME) {
+      while (oi < n && got[order[oi]]) { oi++; path = null; }
+      if (!path) {
+        const ci = oi < n ? order[oi] : -1;
+        let ni = oi + 1;
+        while (ni < n && got[order[ni]]) ni++;
+        const target = ci === -1 ? maze.finish : cheeseCells[ci];
+        const next   = ci === -1 ? null : (ni < n ? cheeseCells[order[ni]] : maze.finish);
+        path = buildPath(v, P, target, next, ci === -1 ? finX : cheeseX[ci], ci === -1 ? finZ : cheeseZ[ci]);
+        if (!path) return null;
+      }
+
+      // Progress: nearest path point, only ever moving forward.
+      const { px, pz, s, vmax, N } = path;
+      let idx = path.idx, bestD = (px[idx] - v.x) ** 2 + (pz[idx] - v.z) ** 2;
+      for (let j = idx + 1; j < N && j <= path.idx + 5; j++) {
+        const d = (px[j] - v.x) ** 2 + (pz[j] - v.z) ** 2;
+        if (d <= bestD) { bestD = d; idx = j; }
+      }
+      path.idx = idx;
+
+      // Steering target: a point `look` units further along the line.
+      const look = P.look0 + P.lookV * Math.abs(v.speed);
+      let aim = idx;
+      while (aim < N - 1 && s[aim] - s[idx] < look) aim++;
+      const yawErr = wrapAngle(Math.atan2(px[aim] - v.x, pz[aim] - v.z) - v.yaw);
+      const absErr = Math.abs(yawErr);
+
+      // Speed target: fastest speed from which every cap ahead is still reachable by braking.
+      let vT = MAX_SPEED * Math.max(0.15, 1 - P.errK * absErr);
+      for (let j = idx; j < N && s[j] - s[idx] < 16; j++) {
+        const lim = Math.sqrt(vmax[j] * vmax[j] + 2 * P.brake * (s[j] - s[idx]));
+        if (lim < vT) vT = lim;
+      }
+
+      // Facing mostly the wrong way → back out while swinging the nose round (3-point turn).
+      if (!rev && absErr > P.revIn) rev = true;
+      else if (rev && absErr < P.revOut) rev = false;
+
+      let rate;
+      if (rev) { input.throttle = -1; rate = Math.sign(yawErr); }
+      else {
+        input.throttle = v.speed > vT + 0.5 ? -1 : v.speed > vT ? 0 : 1;
+        rate = Math.max(-1, Math.min(1, P.kp * yawErr));
+      }
+      input.turn = v.speed < -0.3 ? -rate : rate;            // steering flips in reverse
+
+      stepVehicle(v, input, maze, FIXED_DT);
+      t += FIXED_DT; tick++;
+
+      for (let i = 0; i < n; i++) {
+        if (!got[i] && Math.hypot(cheeseX[i] - v.x, cheeseZ[i] - v.z) < CHEESE_RADIUS) {
+          got[i] = 1; left--; pickups.push(t); lastEvent = t;
+        }
+      }
+      const done = left === 0 && Math.hypot(finX - v.x, finZ - v.z) < GATE_RADIUS;
+      if (record && (done || tick % RECORD_EVERY === 0)) {
+        frames.push({ t: round3(t), x: round3(v.x), z: round3(v.z), yaw: round3(v.yaw) });
+      }
+      if (done) {
+        const marks = [...pickups, t];
+        return { time: t, frames, splits: marks.map((m, i) => m - (i ? marks[i - 1] : 0)) };
+      }
+      if (t - lastEvent > STALL_TIME) return null;
+    }
+    return null;
   }
-    // Extra slowdown when very close to current target cell (about to turn)
-  if (dCur < 3.0 && botPathIdx + 2 < botPath.length) {
-    const nextCell = botPath[botPathIdx + 2];
-    const ndx = toWorldX(nextCell[1]) - ctx;
-    const ndz = toWorldZ(nextCell[0]) - ctz;
-    const nextDir = Math.atan2(ndx, ndz);
-    let nextYawDiff = nextDir - botYaw;
-    while (nextYawDiff > Math.PI) nextYawDiff -= 2*Math.PI;
-    while (nextYawDiff < -Math.PI) nextYawDiff += 2*Math.PI;
-    if (Math.abs(nextYawDiff) > 0.5) targetSpeed = Math.min(targetSpeed, MAX_SPEED * 0.4);
+
+  const timeOf = (order, P) => { const r = simulate(order, P, false); return r ? r.time : Infinity; };
+
+  // Pick the order that actually drives fastest, then tune the driver on it.
+  let order = null, best = Infinity, bestP = DEFAULTS;
+  for (const cand of orders.values()) {
+    const time = timeOf(cand, DEFAULTS);
+    if (time < best || !order) { best = time; order = cand; }
   }
-
-  // Accelerate / decelerate toward target speed
-  if (botSpeed < targetSpeed) {
-    botSpeed = Math.min(botSpeed + ACCEL * dt, targetSpeed);
-  } else if (botSpeed > targetSpeed) {
-    botSpeed = Math.max(botSpeed - FRICTION * dt, targetSpeed);
+  const rand = makeRNG(seed ^ 0x51ED270B);
+  const keys = Object.keys(RANGES);
+  for (let i = 0; i < SEARCH_RUNS; i++) {
+    const P = {};
+    const explore = i < SEARCH_RUNS * 0.4 || best === Infinity;
+    for (const k of keys) {
+      const [lo, hi] = RANGES[k];
+      const val = explore ? lo + rand() * (hi - lo)                      // wide sample
+                          : bestP[k] + (rand() - 0.5) * (hi - lo) * 0.25; // refine around the best
+      P[k] = Math.max(lo, Math.min(hi, val));
+    }
+    P.iters = Math.round(P.iters);
+    const time = timeOf(order, P);
+    if (time < best) { best = time; bestP = P; }
   }
-
-  // Move forward with wall collision
-  const dxMove = Math.sin(botYaw) * botSpeed * dt;
-  const dzMove = Math.cos(botYaw) * botSpeed * dt;
-  if (!blocked(botPos.x + dxMove, botPos.z)) botPos.x += dxMove; else botSpeed *= 0.5;
-  if (!blocked(botPos.x, botPos.z + dzMove)) botPos.z += dzMove; else botSpeed *= 0.5;
-
-  // Advance path index when we get close to the current target
-  if (dCur < 2.3) {
-    botPathIdx++;
-  }
-
-  // Update model position + rotation
-  botRat.position.copy(botPos);
-  botRat.rotation.y = botYaw;
-
-  // Bobbing
-  const t = performance.now() * 0.001;
-  botRat.position.y = Math.abs(botSpeed) > 0.5 ? Math.abs(Math.sin(t * 14)) * 0.12 : 0;
+  return best === Infinity ? null : simulate(order, bestP, true);
 }
+
+const round3 = (x) => Math.round(x * 1000) / 1000;

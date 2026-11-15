@@ -1,669 +1,435 @@
 // ============================================================
-// MULTI.JS — multiplayer logic
+// MULTI.JS — real-time multiplayer over Firebase Realtime Database
+//
+// rooms/{code}
+//   host, level, createdAt
+//   race:   { match, round, seed, level, startAt }   ← single source of truth for a round
+//   cheese: { rk, pid, name }                        ← claimed with a transaction
+//   players/{pid}: { name, color, joinedAt, x, z, yaw, rk, finished, finishTime }
+//
+// `rk` ("match_round") tags per-round data, so nothing has to be reset between
+// rounds and stale values from an earlier round are simply ignored.
+// Every clock here is server time, so all players see the same start and timer.
 // ============================================================
 
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-  initEngine, onCheeseTemplateLoaded,
-  renderer, scene, camera, orbitControls,
-  rat, ghostRat, cheeses, cheeseTemplate, cheeseGeo, cheeseMat,
-  startPos, finishPos, finishGate,
-  GW, GH, grid,
-  speed, yaw, lastRat, clock,
-  followCam, savedCamOffset, minimapOn,
-  setSpeed, setYaw, setFollowCam, setMinimapOn,
-  FIXED_DT, CELL, MODEL_URL, MODEL_SCALE, MODEL_Y, MODEL_FACE, CHEESE_SCALE, CHEESE_Y,
-  makeRNG, toWorldX, toWorldZ, toCol, toRow,
-  generateMaze, placeCheeseAt, clearCheeses, makeNameLabel,
-  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses, rebuildMazeWalls, getGW, getGH, getGrid, getYaw, getSpeed,
+  initEngine, startLoop, stopLoop, setMaze, setCheeses, removeCheese, cheeses, touchedCheese, atGate,
+  setGateOpen, stepPlayer, makeRat, disposeRat, player, scene, minimapDots,
 } from './engine.js';
-import { getDatabase, ref, set, get, onValue, off, update, remove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+import { generateMaze, braidMaze, multiCheeseCell, wrapAngle, escapeHtml, cleanName } from './core.js';
+import {
+  getDatabase, ref, get, set, update, remove, onValue, onDisconnect, runTransaction, serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
-let rtdb;
-export function initMultiFirebase(fbApp) { rtdb = getDatabase(fbApp); }
-
-// ── Constants ─────────────────────────────────────────────────
-const PLAYER_COLORS = ['#ff4444','#44aaff','#ff44ff','#ffaa00','#00ffaa','#ff8844','#44ffff','#ffff44','#aa44ff','#44ff44'];
-
-const now        = new Date();
-const DAILY_SEED = now.getFullYear()*10000 + (now.getMonth()+1)*100 + now.getDate();
-const MP_LEVELS  = {
-  easy:   { cw:9, ch:9, label:'Easy',   seed:DAILY_SEED+10 },
-  medium: { cw:9, ch:9, label:'Medium', seed:DAILY_SEED+11 },
-  hard:   { cw:9, ch:9, label:'Hard',   seed:DAILY_SEED+12 },
+const COLORS = ['#ff4444', '#44aaff', '#ff44ff', '#ffaa00', '#00ffaa', '#ff8844', '#44ffff', '#ffff44', '#aa44ff', '#44ff44'];
+const LEVELS = {
+  easy:   { label: 'Easy',   cells: 7  },
+  medium: { label: 'Medium', cells: 9  },
+  hard:   { label: 'Hard',   cells: 11 },
 };
-
-// ── State ─────────────────────────────────────────────────────
-let myPlayerId     = null;
-let myRoom         = null;
-let myColor        = PLAYER_COLORS[0];
-let myName         = localStorage.getItem('ratrace_username') || 'Anon';
-let isHost         = false;
-let mpLevelKey     = 'easy';
-let mpGameStarted  = false;
-let mpRaceTime     = 0;
-let mpFinished     = false;
-let mpCheeseCollected = false;
-let mySpeedPenalty = 1.0;
-let mpCheeseWinner = null;
-let mpMazeWinner   = null;
-let mpResults      = {}; // pid -> {name, time, hasCheese, finished}
-let mpListeners    = [];
-let mpPlayers      = {};
-let mpOtherRats    = {};
-let mpCheeseObj    = null;
-let _mpAcc         = 0;
-let mpStarted      = false;
-let mpGameScreen   = null;
-
-let currentRound = 1;
 const TOTAL_ROUNDS = 3;
-let roundPoints = {}; // pid -> total points across rounds
-let roundResults = []; // array of round result objects
-let numPlayers = 1;
-let mpResultsShown = false;   // guard so the results board shows once per round
-let _finishFallback = null;   // fallback timer so a never-finishing player can't hang the round
+const MAX_PLAYERS  = 10;
+const COUNTDOWN_MS = 5000;    // lobby/results → GO
+const GRACE_S      = 30;      // seconds the rest get after the first rat finishes
+const SEND_MS      = 80;      // position broadcast interval
+const SLOW_FACTOR  = 0.55;    // top speed while someone else holds the cheese
+const NAME_KEY     = 'ratrace_username';
 
-// ── Helpers ───────────────────────────────────────────────────
-function genRoomCode() {
+// ── State ────────────────────────────────────────────────────
+let rtdb, serverOffset = 0, clockSynced = false, connected = false;
+const me = { id: null, name: 'Anon', color: COLORS[0], joinedAt: 0 };
+let room = null;              // room code while in a room
+let hostId = null, level = 'easy';
+let players = {};             // latest snapshot of rooms/{code}/players
+let race = null, rk = '';     // current round and its tag
+let cheeseRaw = null;         // latest rooms/{code}/cheese (may belong to an older round)
+let myFinish = null;          // my finish time this round
+let resultsShown = false, cheeseNotified = false, claiming = false, starting = false;
+let points = {}, pointNames = {}, pointsMatch = 0;
+let statusBase = '', lastStatus = '', lastTimer = '', lastCount = '';
+let lastSend = 0;
+const sent = { x: NaN, z: NaN, yaw: NaN };
+const others = {};            // pid → { mesh, x, z, yaw, tx, tz, tyaw, dot }
+let unsubs = [];
+let handlers = {};            // lobby UI callbacks
+
+const $ = (id) => document.getElementById(id);
+const show = (id, on, mode = 'block') => { $(id).style.display = on ? mode : 'none'; };
+const serverNow = () => Date.now() + serverOffset;
+const roomRef   = (path = '') => ref(rtdb, `rooms/${room}${path}`);
+const playerRef = () => roomRef(`/players/${me.id}`);
+const present   = () => Object.entries(players).filter(([, p]) => p && p.name);
+const cheeseOwner = () => (cheeseRaw && cheeseRaw.rk === rk ? cheeseRaw : null);
+const raceClock = () => (serverNow() - race.startAt) / 1000;
+
+export function initMultiFirebase(fbApp) {
+  rtdb = getDatabase(fbApp);
+  // Rough estimate until syncClock() has measured a proper one.
+  onValue(ref(rtdb, '.info/serverTimeOffset'), (s) => { if (!clockSynced) serverOffset = s.val() || 0; });
+  // On every (re)connect: re-arm the disconnect cleanup and restore our record,
+  // which the server deleted if the connection had dropped.
+  onValue(ref(rtdb, '.info/connected'), (s) => {
+    connected = !!s.val();
+    if (connected && room) register();
+  });
+  window.addEventListener('pagehide', () => leaveRoom());
+}
+
+function register() {
+  onDisconnect(playerRef()).remove();
+  return update(playerRef(), {
+    name: me.name, color: me.color, joinedAt: me.joinedAt,
+    x: round2(player.x), z: round2(player.z), yaw: round2(player.yaw),
+    rk, finished: myFinish !== null, finishTime: myFinish || 0,
+  });
+}
+
+/**
+ * Measure the offset to server time with a few timed round trips, keeping the
+ * fastest (least delayed) sample. Firebase's own estimate is taken once while
+ * the page is still loading and can be off by far more than a race is won by.
+ */
+async function syncClock() {
+  const probe = roomRef(`/sync/${me.id}`);
+  let bestTrip = Infinity;
+  for (let i = 0; i < 4; i++) {
+    const t0 = Date.now();
+    await set(probe, serverTimestamp());
+    const t1 = Date.now();
+    const stamp = (await get(probe)).val();
+    if (typeof stamp === 'number' && t1 - t0 < bestTrip) {
+      bestTrip = t1 - t0;
+      serverOffset = stamp - (t0 + t1) / 2;
+      clockSynced = true;
+    }
+  }
+  remove(probe);
+}
+
+/** The room's host, falling back to the longest-present player if the host has left. */
+function effectiveHost() {
+  if (players[hostId]?.name) return hostId;
+  const list = present().sort((a, b) => (a[1].joinedAt - b[1].joinedAt) || (a[0] < b[0] ? -1 : 1));
+  return list.length ? list[0][0] : null;
+}
+const amHost = () => effectiveHost() === me.id;
+
+// ── Name prompt ──────────────────────────────────────────────
+function askName() {
+  return new Promise((resolve) => {
+    const input = $('nameModalInput');
+    input.value = localStorage.getItem(NAME_KEY) || '';
+    show('nameModal', true, 'flex');
+    input.focus();
+    const close = (name) => { show('nameModal', false); resolve(name); };
+    const ok = () => {
+      const name = cleanName(input.value);
+      localStorage.setItem(NAME_KEY, name);
+      close(name);
+    };
+    $('nameModalBtn').onclick = ok;
+    $('nameModalCancel').onclick = () => close(null);
+    input.onkeydown = (e) => { if (e.key === 'Enter') ok(); else if (e.key === 'Escape') close(null); };
+  });
+}
+
+// ── Rooms ────────────────────────────────────────────────────
+function randomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i=0; i<4; i++) code += chars[(Math.random()*chars.length)|0];
+  for (let i = 0; i < 4; i++) code += chars[(Math.random() * chars.length) | 0];
+  return code;
+}
+const hasPlayers = (data) => !!data && Object.values(data.players || {}).some(p => p && p.name);
+
+/** @returns the room code, or null if the player cancelled. Throws Error with a readable message. */
+export async function createRoom() {
+  const name = await askName();
+  if (!name) return null;
+  let code = randomCode();
+  for (let tries = 0; tries < 6 && hasPlayers((await get(ref(rtdb, `rooms/${code}`))).val()); tries++) code = randomCode();
+  me.id = newId(); me.name = name; me.color = COLORS[0];
+  room = code;
+  await set(roomRef(), { host: me.id, level, createdAt: serverNow() });   // also clears any abandoned room
+  await enter();
   return code;
 }
 
-function askName(cb) {
-  const modal = document.getElementById('nameModal');
-  const input = document.getElementById('nameModalInput');
-  const btn   = document.getElementById('nameModalBtn');
-  const current = localStorage.getItem('ratrace_username') || '';
-  input.value = current;
-  modal.style.display = 'flex';
-  input.focus();
-
-  const done = () => {
-    const nm = input.value.trim().slice(0,14) || 'Anon';
-    myName = nm;
-    localStorage.setItem('ratrace_username', nm);
-    modal.style.display = 'none';
-    cb(nm);
-  };
-  const cancel = () => {
-    modal.style.display = 'none';
-  };
-
-  btn.onclick = done;
-  input.onkeydown = (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') cancel(); };
-
-  // Add cancel button if not already there
-  let cancelBtn = document.getElementById('nameModalCancel');
-  if (!cancelBtn) {
-    cancelBtn = document.createElement('button');
-    cancelBtn.id = 'nameModalCancel';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = 'margin-top:8px;font-family:monospace;font-size:14px;padding:8px 24px;border-radius:6px;border:1px solid #555;background:none;color:#aaa;cursor:pointer;width:100%';
-    btn.parentNode.appendChild(cancelBtn);
-  }
-  document.getElementById('nameModalCancel').onclick = cancel;
-}
-
-function showCheeseNotif(name) {
-  const el = document.getElementById('cheeseNotif');
-  el.innerHTML = `🧀 ${name} CUT THE CHEESE!<br><small>PLAYERS AFFECTED BY THE STANK!</small>`;
-  el.style.display = 'block';
-  setTimeout(() => el.style.display='none', 4000);
-}
-
-function showMpStatus(msg) {
-  document.getElementById('mpStatus').textContent = msg;
-}
-
-// ── End of game leaderboard ───────────────────────────────────
-function showMpResults() {
-  if (mpResultsShown) return;          // already shown this round
-  mpResultsShown = true;
-  if (_finishFallback) { clearTimeout(_finishFallback); _finishFallback = null; }
-
-  // Tally points for this round
-  const allPlayers = { ...mpResults };
-  // Add players from mpPlayers, using their REAL finish state (the old code
-  // marked everyone here as DNF / time 0, which broke the winner ranking).
-  Object.entries(mpPlayers).forEach(([pid, p]) => {
-    if (!allPlayers[pid]) allPlayers[pid] = { pid, name:p.name, time:p.finishTime||0, hasCheese:p.hasCheese||false, finished:!!p.finished };
-  });
-  if (!allPlayers[myPlayerId]) allPlayers[myPlayerId] = { pid:myPlayerId, name:myName, time:mpRaceTime, hasCheese:mpCheeseCollected, finished:mpFinished };
-
-  const finished = Object.values(allPlayers).filter(p=>p.finished).sort((a,b)=>a.time-b.time);
-  const dnf      = Object.values(allPlayers).filter(p=>!p.finished);
-  const cheeseBonus = Math.ceil(numPlayers / 2);
-
-  // Award points
-  finished.forEach((p, i) => {
-    const pts = (numPlayers - i);
-    roundPoints[p.pid] = (roundPoints[p.pid]||0) + pts;
-    if (p.hasCheese) roundPoints[p.pid] += cheeseBonus;
-  });
-  dnf.forEach(p => {
-    roundPoints[p.pid] = roundPoints[p.pid] || 0;
-    if (p.hasCheese) roundPoints[p.pid] += cheeseBonus;
-  });
-
-  roundResults.push({ finished, dnf, cheeseBonus });
-
-  const isFinal = currentRound >= TOTAL_ROUNDS;
-  const modal   = document.getElementById('mpResultsModal');
-  const list    = document.getElementById('mpResultsList');
-
-  // Sort by total points for standings
-  const standings = Object.entries(roundPoints)
-    .map(([pid, pts]) => ({ pid, pts, name: allPlayers[pid]?.name || pid }))
-    .sort((a,b) => b.pts - a.pts);
-
-  let html = `<h2 style="color:#ffd35a;margin-bottom:4px">${isFinal ? '🏆 Final Results' : `Round ${currentRound} Results`}</h2>`;
-  html += `<p style="color:#aaa;font-size:12px;margin-bottom:16px">${isFinal ? 'Game over!' : `Round ${currentRound} of ${TOTAL_ROUNDS}`}</p>`;
-
-  // Round finishers
-  html += `<p style="color:#9fe;margin-bottom:6px">This round</p>`;
-  html += '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">';
-  finished.forEach((p, i) => {
-    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
-    const pts   = numPlayers - i;
-    html += `<tr>
-      <td style="padding:4px 8px">${medal}</td>
-      <td style="padding:4px 8px">${p.name}${p.pid===myPlayerId?' (you)':''}</td>
-      <td style="padding:4px 8px;color:#ffd35a">${p.time.toFixed(2)}s</td>
-      <td style="padding:4px 8px;color:#9fe">+${pts}pts${p.hasCheese?` +${cheeseBonus}🧀`:''}</td>
-    </tr>`;
-  });
-  if (dnf.length) {
-    dnf.forEach(p => {
-      html += `<tr><td style="padding:4px 8px;color:#555">DNF</td><td style="padding:4px 8px;color:#555">${p.name}</td><td></td><td style="padding:4px 8px;color:#9fe">${p.hasCheese?`+${cheeseBonus}🧀`:'0pts'}</td></tr>`;
-    });
-  }
-  html += '</table>';
-
-  // Overall standings
-  html += '<p style="color:#9fe;margin-bottom:6px">Overall Standings</p>';
-  html += '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">';
-  standings.forEach((p, i) => {
-    const isMe = p.pid === myPlayerId;
-    html += `<tr style="${isMe?'background:#1a2a10':''}">
-      <td style="padding:4px 8px">${i+1}.</td>
-      <td style="padding:4px 8px">${p.name}${isMe?' (you)':''}</td>
-      <td style="padding:4px 8px;color:#ffd35a;font-weight:bold">${p.pts} pts</td>
-    </tr>`;
-  });
-  html += '</table>';
-
-  if (isFinal) {
-    const winner = standings[0];
-    html += `<p style="font-size:20px;color:#ffd35a;margin-bottom:16px">🎉 ${winner.name} wins!</p>`;
-    html += `<button onclick="document.getElementById('mpResultsModal').style.display='none'" style="font-family:monospace;font-size:14px;padding:10px 20px;border-radius:8px;border:2px solid #555;background:#222;color:#fff;cursor:pointer">Close</button>`;
-  } else if (isHost) {
-    html += `<button id="nextRoundBtn" style="font-family:monospace;font-size:16px;padding:12px 28px;border-radius:8px;border:2px solid #ffd35a;background:#2a2410;color:#ffd35a;cursor:pointer">▶ Start Round ${currentRound+1}</button>`;
-  } else {
-    html += `<p style="color:#aaa;font-size:13px">Waiting for host to start next round…</p>`;
-  }
-
-  list.innerHTML = html;
-  modal.style.display = 'block';
-
-  if (!isFinal && isHost) {
-    document.getElementById('nextRoundBtn').onclick = async () => {
-      currentRound++;
-      await update(ref(rtdb, `rooms/${myRoom}`), { currentRound, roundStarted: Date.now() });
-      document.getElementById('mpResultsModal').style.display = 'none';
-      Object.values(mpOtherRats).forEach(r => scene.remove(r));
-      mpOtherRats = {};
-      _startRound(myRoom, mpLevelKey, mpGameScreen);
-    };
-  }
-
-  // Non-hosts listen for next round
-  if (!isFinal && !isHost) {
-    const nextRef = ref(rtdb, `rooms/${myRoom}/currentRound`);
-    onValue(nextRef, snap => {
-      if (snap.val() > currentRound) {
-        currentRound = snap.val();
-        off(nextRef, 'value');
-        modal.style.display = 'none';
-        Object.values(mpOtherRats).forEach(r => scene.remove(r));
-        mpOtherRats = {};
-        _startRound(myRoom, mpLevelKey, mpGameScreen);
-      }
-    });
-  }
-}
-
-// ── Join / Leave ──────────────────────────────────────────────
-export function leaveRoom() {
-  if (myRoom && myPlayerId) {
-    remove(ref(rtdb, `rooms/${myRoom}/players/${myPlayerId}`));
-    myRoom = null; myPlayerId = null;
-  }
-  mpListeners.forEach(fn => fn()); mpListeners = [];
-  mpGameStarted = false;
-  mySpeedPenalty = 1.0;
-  mpCheeseWinner = null;
-  mpMazeWinner = null;
-  mpFinished = false;
-  mpCheeseCollected = false;
-  mpResultsShown = false;
-  if (_finishFallback) { clearTimeout(_finishFallback); _finishFallback = null; }
-  currentRound = 1;
-  roundPoints = {};
-  roundResults = [];
-  window._mpCanAccel = true;
-  if (scene) Object.values(mpOtherRats).forEach(r => scene.remove(r));
-  mpOtherRats = {}; mpPlayers = {};
-  if (renderer) renderer.setAnimationLoop(null);
-}
-
-export function createRoom(onLobby) {
-  askName((name) => {
-    myName = name;
-    const code  = genRoomCode();
-    myPlayerId  = 'p_'+Math.random().toString(36).slice(2,8);
-    myColor     = PLAYER_COLORS[0];
-    isHost      = true;
-    myRoom      = code;
-    _writePlayer(code, name, true, onLobby);
-  });
-}
-
-export function joinRoom(code, onLobby, onError) {
+export async function joinRoom(code) {
   code = code.toUpperCase();
-  askName(async (name) => {
-    myName = name;
-    const snap    = await get(ref(rtdb, `rooms/${code}`));
-    const existing = snap.val();
-    if (!existing) { onError('Room not found!'); return; }
-    const playerCount = Object.keys(existing.players||{}).length;
-    if (playerCount >= 10) { onError('Room is full!'); return; }
-    const usedColors = Object.values(existing.players||{}).map(p=>p.color);
-    myColor     = PLAYER_COLORS.find(c=>!usedColors.includes(c)) || PLAYER_COLORS[playerCount%PLAYER_COLORS.length];
-    myPlayerId  = 'p_'+Math.random().toString(36).slice(2,8);
-    isHost      = false;
-    myRoom      = code;
-    _writePlayer(code, name, false, onLobby);
+  const name = await askName();
+  if (!name) return null;
+  const data = (await get(ref(rtdb, `rooms/${code}`))).val();
+  if (!hasPlayers(data)) throw new Error('Room not found!');
+  const list = Object.values(data.players).filter(p => p && p.name);
+  if (list.length >= MAX_PLAYERS) throw new Error('Room is full!');
+  if (data.race) throw new Error('That game has already started.');
+  const used = list.map(p => p.color);
+  me.id = newId(); me.name = name;
+  me.color = COLORS.find(c => !used.includes(c)) || COLORS[list.length % COLORS.length];
+  room = code;
+  await enter();
+  return code;
+}
+const newId = () => 'p_' + Math.random().toString(36).slice(2, 10);
+
+async function enter() {
+  await syncClock();
+  me.joinedAt = serverNow();
+  race = null; rk = ''; cheeseRaw = null; myFinish = null; players = {};
+  points = {}; pointNames = {}; pointsMatch = 0;
+  await register();
+  unsubs = [
+    onValue(roomRef('/host'),    (s) => { hostId = s.val(); onPlayers(); }),
+    onValue(roomRef('/level'),   (s) => { if (s.val()) { level = s.val(); handlers.onLevel?.(level); } }),
+    onValue(roomRef('/players'), (s) => { players = s.val() || {}; onPlayers(); }),
+    onValue(roomRef('/cheese'),  (s) => { cheeseRaw = s.val(); applyCheese(); }),
+    onValue(roomRef('/race'),    (s) => {
+      const r = s.val();
+      if (r && `${r.match}_${r.round}` !== rk) beginRound(r);
+    }),
+  ];
+}
+
+export function leaveRoom() {
+  if (!room) return;
+  unsubs.forEach(off => off()); unsubs = [];
+  onDisconnect(playerRef()).cancel();
+  // Last one out deletes the room; otherwise just remove ourselves.
+  if (present().some(([pid]) => pid !== me.id)) remove(playerRef());
+  else remove(roomRef());
+  for (const pid of Object.keys(others)) dropOther(pid);
+  minimapDots.length = 0;
+  if (race) stopLoop();
+  room = null; race = null; rk = ''; players = {}; cheeseRaw = null; starting = false;
+  for (const id of ['mpHud', 'countdown', 'cheeseNotif', 'mpResultsModal']) show(id, false);
+}
+
+/** Lobby UI hooks: onPlayers(list, isHost), onLevel(level), onRaceStart(). */
+export function setLobbyHandlers(h) { handlers = h; }
+
+export function setRoomLevel(lvl) {
+  if (room && amHost() && LEVELS[lvl]) update(roomRef(), { level: lvl });
+}
+
+/** Host only: start round 1 of a new match. */
+export function startMatch() {
+  return launch({ match: (race?.match || 0) + 1, round: 1, seed: (Math.random() * 2 ** 31) | 0, level });
+}
+function launch(next) {
+  if (!room || !amHost() || starting) return Promise.resolve();
+  starting = true;
+  return update(roomRef(), { host: me.id, race: { ...next, startAt: serverNow() + COUNTDOWN_MS } })
+    .finally(() => { starting = false; });
+}
+
+// ── Players ──────────────────────────────────────────────────
+function onPlayers() {
+  handlers.onPlayers?.(present().map(([pid, p]) => ({ pid, name: p.name, color: p.color, me: pid === me.id })), amHost());
+
+  for (const [pid, p] of present()) {
+    if (pid === me.id) continue;
+    let o = others[pid];
+    if (!o && race) {                                     // rats only exist once a race is on screen
+      o = others[pid] = { mesh: makeRat({ tint: p.color, label: p.name }), x: p.x || 0, z: p.z || 0, yaw: p.yaw || 0,
+                          dot: { x: 0, z: 0, color: p.color } };
+      scene.add(o.mesh);
+      minimapDots.push(o.dot);
+    }
+    if (o) { o.tx = p.x || 0; o.tz = p.z || 0; o.tyaw = p.yaw || 0; }
+  }
+  for (const pid of Object.keys(others)) if (!players[pid]?.name) dropOther(pid);
+
+  if (race && !resultsShown && myFinish === null) {
+    const first = finishers()[0];
+    if (first && !statusBase.startsWith('🏁')) statusBase = `🏁 ${first.name} escaped the maze first!`;
+  }
+  if (resultsShown) renderResultsFooter();
+}
+
+function dropOther(pid) {
+  const o = others[pid];
+  disposeRat(o.mesh);
+  const i = minimapDots.indexOf(o.dot);
+  if (i !== -1) minimapDots.splice(i, 1);
+  delete others[pid];
+}
+
+/** Players who have finished the current round, fastest first. */
+function finishers() {
+  return present()
+    .filter(([, p]) => p.rk === rk && p.finished)
+    .map(([pid, p]) => ({ pid, name: p.name, time: p.finishTime || 0 }))
+    .sort((a, b) => a.time - b.time);
+}
+
+// ── Round ────────────────────────────────────────────────────
+function beginRound(r) {
+  race = r; rk = `${r.match}_${r.round}`;
+  if (r.match !== pointsMatch) { points = {}; pointNames = {}; pointsMatch = r.match; }
+  myFinish = null; resultsShown = false; cheeseNotified = false; claiming = false;
+  statusBase = `Round ${r.round} of ${TOTAL_ROUNDS}`;
+  lastTimer = lastCount = lastStatus = '';
+
+  handlers.onRaceStart?.();
+  initEngine($('gameScreen'));
+  show('mpHud', true);
+  show('mpResultsModal', false);
+  show('cheeseNotif', false);
+
+  // Everyone derives the identical maze from the shared seed.
+  const cells = (LEVELS[r.level] || LEVELS.easy).cells, seed = (r.seed + r.round * 101) | 0;
+  const maze = generateMaze(cells, cells, seed);
+  braidMaze(maze, seed + 7, 0.08);
+  setMaze(maze);
+  const cheese = multiCheeseCell(maze);
+  setCheeses(cheese ? [cheese] : []);
+  setGateOpen(true);
+  applyCheese();
+  onPlayers();
+
+  sent.x = NaN;
+  update(playerRef(), { rk, finished: false, finishTime: 0, x: round2(player.x), z: round2(player.z), yaw: round2(player.yaw) });
+  startLoop(fixedStep, frame);
+}
+
+function applyCheese() {
+  const owner = cheeseOwner();
+  if (!owner || !race) return;
+  if (cheeses.length) removeCheese(0);
+  if (cheeseNotified) return;
+  cheeseNotified = true;
+  const mine = owner.pid === me.id;
+  $('cheeseNotif').innerHTML = `🧀 ${escapeHtml(mine ? 'You' : owner.name)} CUT THE CHEESE!<br><small>` +
+    (mine ? 'Everyone else is slowed!' : 'You are slowed by the stank!') + '</small>';
+  show('cheeseNotif', true);
+  setTimeout(() => show('cheeseNotif', false), 4000);
+}
+
+function claimCheese() {
+  claiming = true;
+  const tag = rk, claim = { rk: tag, pid: me.id, name: me.name };
+  // A transaction makes the server pick exactly one winner if two rats arrive together.
+  runTransaction(roomRef('/cheese'), (cur) => (cur && cur.rk === tag ? undefined : claim))
+    .catch(e => console.error('cheese claim failed', e))
+    .finally(() => { claiming = false; });
+}
+
+function fixedStep(dt) {
+  const live = serverNow() >= race.startAt;
+  const owner = cheeseOwner();
+  stepPlayer(dt, owner && owner.pid !== me.id ? SLOW_FACTOR : 1, !live);
+  if (!live || myFinish !== null) return;
+
+  if (!owner && !claiming && touchedCheese() !== -1) claimCheese();
+  if (atGate()) {
+    myFinish = raceClock();
+    update(playerRef(), { rk, finished: true, finishTime: myFinish });
+    const first = finishers().every(f => f.pid === me.id);
+    statusBase = `🏁 You ${first ? 'escaped first' : 'finished'}! Time: ${myFinish.toFixed(2)}s`;
+  }
+}
+
+function frame(dt) {
+  const now = serverNow(), toStart = race.startAt - now;
+
+  const count = toStart > 0 ? String(Math.ceil(toStart / 1000)) : toStart > -900 ? 'GO!' : '';
+  if (count !== lastCount) { $('countdown').textContent = lastCount = count; show('countdown', !!count); }
+
+  const clockNow = Math.max(0, -toStart / 1000);
+  const timer = `⏱ ${(myFinish ?? clockNow).toFixed(2)}s`;
+  if (timer !== lastTimer) $('mpTimer').textContent = lastTimer = timer;
+
+  // Ease the other rats toward their latest reported positions.
+  const k = 1 - Math.exp(-14 * dt);
+  for (const o of Object.values(others)) {
+    o.x += (o.tx - o.x) * k; o.z += (o.tz - o.z) * k; o.yaw += wrapAngle(o.tyaw - o.yaw) * k;
+    o.mesh.position.set(o.x, 0, o.z); o.mesh.rotation.y = o.yaw;
+    o.dot.x = o.x; o.dot.z = o.z;
+  }
+
+  if (now - lastSend >= SEND_MS) {
+    const x = round2(player.x), z = round2(player.z), yaw = round2(player.yaw);
+    if (x !== sent.x || z !== sent.z || yaw !== sent.yaw) {
+      lastSend = now; sent.x = x; sent.z = z; sent.yaw = yaw;
+      update(playerRef(), { x, z, yaw });
+    }
+  }
+
+  // Round ends when everyone is home, or GRACE_S after the first finisher.
+  let status = statusBase;
+  if (!resultsShown && toStart <= 0) {
+    const done = finishers(), all = present();
+    if (all.length && done.length === all.length) showResults();
+    else if (done.length) {
+      const left = done[0].time + GRACE_S - clockNow;
+      if (left <= 0) showResults();
+      else status += `\nRound ends in ${Math.ceil(left)}s`;
+    }
+  }
+  if (status !== lastStatus) $('mpStatus').textContent = lastStatus = status;
+}
+
+// ── Results ──────────────────────────────────────────────────
+function showResults() {
+  resultsShown = true;
+  const owner = cheeseOwner();
+  const done = finishers(), doneIds = new Set(done.map(f => f.pid));
+  const dnf = present().filter(([pid]) => !doneIds.has(pid)).map(([pid, p]) => ({ pid, name: p.name }));
+  const n = done.length + dnf.length, cheeseBonus = Math.ceil(n / 2);
+
+  const award = (p, pts) => {
+    p.pts = pts;
+    p.cheese = !!owner && owner.pid === p.pid;
+    points[p.pid] = (points[p.pid] || 0) + pts + (p.cheese ? cheeseBonus : 0);
+    pointNames[p.pid] = p.name;
+  };
+  done.forEach((p, i) => award(p, n - i));
+  dnf.forEach(p => award(p, 0));
+
+  const final = race.round >= TOTAL_ROUNDS;
+  const you = (pid) => (pid === me.id ? ' (you)' : '');
+  const bonus = (p) => (p.cheese ? ` +${cheeseBonus}🧀` : '');
+  let html = `<h2>${final ? '🏆 Final Results' : `Round ${race.round} Results`}</h2>` +
+             `<p class="sub">${final ? 'Game over!' : `Round ${race.round} of ${TOTAL_ROUNDS}`}</p>` +
+             '<p class="head">This round</p><table>';
+  done.forEach((p, i) => {
+    html += `<tr><td>${['🥇', '🥈', '🥉'][i] || `${i + 1}.`}</td><td>${escapeHtml(p.name)}${you(p.pid)}</td>` +
+            `<td class="gold">${p.time.toFixed(2)}s</td><td class="mint">+${p.pts}pts${bonus(p)}</td></tr>`;
   });
-}
-
-async function _writePlayer(code, name, hosting, onLobby) {
-  const L = MP_LEVELS[mpLevelKey];
-  const startX = (1 - (2*(L.cw)+1-1)/2) * 4;
-  const startZ = (1 - (2*(L.ch)+1-1)/2) * 4;
-  await update(ref(rtdb, `rooms/${code}/players/${myPlayerId}`), {
-    name, color: myColor, x:startX, z:startZ, yaw:Math.PI/2,
-    finished:false, hasCheese:false, joinedAt:Date.now(), finishTime:0
+  for (const p of dnf) {
+    html += `<tr class="dnf"><td>DNF</td><td>${escapeHtml(p.name)}${you(p.pid)}</td><td></td>` +
+            `<td class="mint">${p.cheese ? bonus(p) : '0pts'}</td></tr>`;
+  }
+  html += '</table><p class="head">Overall standings</p><table>';
+  const standings = Object.entries(points).map(([pid, pts]) => ({ pid, pts, name: pointNames[pid] })).sort((a, b) => b.pts - a.pts);
+  standings.forEach((p, i) => {
+    html += `<tr${p.pid === me.id ? ' class="me"' : ''}><td>${i + 1}.</td><td>${escapeHtml(p.name)}${you(p.pid)}</td>` +
+            `<td class="gold"><b>${p.pts} pts</b></td></tr>`;
   });
-  if (hosting) {
-    await update(ref(rtdb, `rooms/${code}`), { host:myPlayerId, level:mpLevelKey, started:false });
+  html += '</table>';
+  if (final && standings.length) {
+    const tied = standings.filter(p => p.pts === standings[0].pts);
+    html += `<p class="winner">🎉 ${tied.length > 1 ? `Tie: ${tied.map(p => escapeHtml(p.name)).join(' & ')}` : `${escapeHtml(standings[0].name)} wins`}!</p>`;
   }
-  window.addEventListener('beforeunload', leaveRoom);
-  onLobby(code, hosting);
+  $('mpResultsList').innerHTML = html + '<div id="mpResultsFooter"></div>';
+  show('mpResultsModal', true);
+  renderResultsFooter();
 }
 
-// ── Lobby listeners ───────────────────────────────────────────
-export function listenLobby(code, onPlayersChange, onRoomChange) {
-  const playersRef = ref(rtdb, `rooms/${code}/players`);
-  const roomRef    = ref(rtdb, `rooms/${code}`);
-  onValue(playersRef, snap => onPlayersChange(snap.val()||{}));
-  onValue(roomRef,    snap => onRoomChange(snap.val()||{}));
-  mpListeners.push(() => off(playersRef,'value'));
-  mpListeners.push(() => off(roomRef,'value'));
-}
-
-export async function setRoomLevel(code, lvl) {
-  mpLevelKey = lvl;
-  await update(ref(rtdb, `rooms/${code}`), { level: lvl });
-}
-
-export async function triggerStart(code) {
-  await update(ref(rtdb, `rooms/${code}`), { started:true, startTime:Date.now()+3500 });
-}
-
-// ── Start game ────────────────────────────────────────────────
-export function startMpGame(code, lvlKey, gameScreen, playerCount) {
-  mpGameScreen  = gameScreen;
-  mpLevelKey    = lvlKey;
-  mpGameStarted = true;
-  numPlayers    = playerCount || 2;
-  currentRound  = 1;
-  roundPoints   = {};
-  roundResults  = [];
-
-  _startRound(code, lvlKey, gameScreen);
-}
-
-function _startRound(code, lvlKey, gameScreen) {
-// Clear old listeners before adding new ones each round
-    mpListeners.forEach(fn => fn()); 
-    mpListeners = [];  
-    mpRaceTime        = 0;
-  mpFinished        = false;
-  mpCheeseCollected = false;
-  mySpeedPenalty    = 1.0;
-  mpCheeseWinner    = null;
-  mpMazeWinner      = null;
-  mpResults         = {};
-  _mpAcc            = 0;
-  mpStarted         = false;
-  mpResultsShown    = false;
-  if (_finishFallback) { clearTimeout(_finishFallback); _finishFallback = null; }
-  window._mpCanAccel = false;
-
-  document.getElementById('info').style.display  = 'none';
-  document.getElementById('mpHud').style.display = 'block';
-  document.getElementById('controls').innerHTML  = '';
-  document.getElementById('mpResultsModal').style.display = 'none';
-
-  // Different seed each round
-  const L = MP_LEVELS[mpLevelKey];
-  const roundSeed = L.seed + (currentRound * 100);
-
-  update(ref(rtdb, `rooms/${code}`), { cheeseCollected: false, roundFinishCount: 0 });
-
-  initEngine(gameScreen, () => {
-    generateMaze(L.cw, L.ch, roundSeed);
-    rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
-    setSpeed(0); setYaw(Math.PI/2);
-    lastRat.copy(rat.position);
-    camera.position.set(startPos.x, 18, startPos.z+22);
-    orbitControls.target.set(startPos.x, 1.5, startPos.z);
-    orbitControls.update();
-
-    if (cheeseTemplate) spawnMpCheese();
-    else onCheeseTemplateLoaded(() => spawnMpCheese());
-
-    document.getElementById('mpStatus').textContent = `Round ${currentRound} of ${TOTAL_ROUNDS}`;
-
-    window._mpCanAccel = false;
-    const cd = document.getElementById('countdown');
-    cd.style.display = 'block';
-    let count = 7;
-    cd.textContent = count;
-    const iv = setInterval(() => {
-      count--;
-      if (count > 0)        { cd.textContent = count; }
-      else if (count === 0) { cd.textContent = 'GO!'; }
-      else { cd.style.display='none'; clearInterval(iv); mpStarted=true; window._mpCanAccel=true; }
-    }, 1000);
-
-    renderer.setAnimationLoop(mpLoop);
-    listenPlayers(code);
-
-    // Reset player finished flags in Firebase for this round
-    update(ref(rtdb, `rooms/${code}/players/${myPlayerId}`), {
-      finished: false, hasCheese: false, finishTime: 0
-    });
-    update(ref(rtdb, `rooms/${code}`), { cheeseCollected: false, roundFinishCount: 0 });
-  });
-}
-
-function spawnMpCheese() {  
-  const GW = getGW(), GH = getGH(), grid = getGrid();
-
-   // Carve a second wandering path through the existing maze
-  const rng2 = makeRNG(MP_LEVELS[mpLevelKey].seed + 7777);
-  let r2 = Math.floor(GH/2), c2 = 1;  // start from middle left
-  while (r2 < GH-2 || c2 < GW-2) {
-    grid[r2][c2] = false;
-    const goRight = c2 < GW-2 && (rng2() > 0.4 || r2 >= GH-2);
-    const goDown  = r2 < GH-2 && (rng2() > 0.4 || c2 >= GW-2);
-    if (goRight && (!goDown || rng2() > 0.5)) {
-      c2 = Math.min(c2+1, GW-2);
-    } else if (goDown) {
-      r2 = Math.min(r2+1, GH-2);
-    } else {
-      break;
-    }
-  }
-  rebuildMazeWalls();
-  for (const c of cheeses) scene.remove(c);
-  clearCheeses();
-
-  // BFS to find shortest path from start to finish
-  const startR = 1, startC = 1;
-  const finR = GH-2, finC = GW-2;
-  const prev = Array.from({length:GH}, ()=>Array(GW).fill(null));
-  const queue = [[startR, startC]];
-  prev[startR][startC] = [-1,-1];
-  while (queue.length) {
-    const [r,c] = queue.shift();
-    for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-      const nr=r+dr, nc=c+dc;
-      if (nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&!prev[nr][nc]) {
-        prev[nr][nc]=[r,c]; queue.push([nr,nc]);
-      }
-    }
-  }
-
-  // Mark cells on the shortest path
-  const onPath = Array.from({length:GH}, ()=>Array(GW).fill(false));
-  let cur = [finR, finC];
-  while (cur[0]!==startR || cur[1]!==startC) {
-    onPath[cur[0]][cur[1]] = true;
-    cur = prev[cur[0]][cur[1]];
-    if (!cur) break;
-  }
-  onPath[startR][startC] = true;
-
-  // BFS from start for actual maze distances
-  const distFromStart = Array.from({length:GH}, ()=>Array(GW).fill(-1));
-  const q1 = [[startR,startC]]; distFromStart[startR][startC]=0;
-  while(q1.length){ const [r,c]=q1.shift(); for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]){ const nr=r+dr,nc=c+dc; if(nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&distFromStart[nr][nc]===-1){ distFromStart[nr][nc]=distFromStart[r][c]+1; q1.push([nr,nc]); } } }
-
-  // BFS from finish for actual maze distances
-  const distFromFin = Array.from({length:GH}, ()=>Array(GW).fill(-1));
-  const q2 = [[finR,finC]]; distFromFin[finR][finC]=0;
-  while(q2.length){ const [r,c]=q2.shift(); for(const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]){ const nr=r+dr,nc=c+dc; if(nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&distFromFin[nr][nc]===-1){ distFromFin[nr][nc]=distFromFin[r][c]+1; q2.push([nr,nc]); } } }
-
-  const totalDist = distFromStart[finR][finC];
-
-  const candidates = [];
-  for (let r=1;r<GH-1;r++) for (let c=1;c<GW-1;c++) {
-    if (grid[r][c] || onPath[r][c]) continue;
-    if (r===startR&&c===startC) continue;
-    if (r===finR&&c===finC) continue;
-    if (distFromStart[r][c]===-1||distFromFin[r][c]===-1) continue;
-    // Must be at least 50% of path length from start, and 20% from finish
-    if (distFromStart[r][c] < totalDist*0.7) continue;
-    if (distFromFin[r][c] < totalDist*0.2) continue;
-    let openN = 0;
-    for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]])
-      if (!grid[r+dr][c+dc]) openN++;
-    const score = Math.abs(distFromStart[r][c] - totalDist*0.65);
-    candidates.push({r, c, dead: openN===1, score});
-  }
-
-  const slightDetours = candidates.filter(x => {
-  let openN = 0;
-  for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]])
-    if (!grid[x.r+dr][x.c+dc]) openN++;
-  return openN === 2;
-}).sort((a,b) => a.score-b.score);
-
-const deadEnds = candidates.filter(x=>x.dead).sort((a,b)=>a.score-b.score);
-const pick = slightDetours.length > 0 ? slightDetours[0] : 
-             deadEnds.length > 0 ? deadEnds[0] : 
-             candidates.sort((a,b)=>a.score-b.score)[0];
-
-  if (pick) {
-    mpCheeseObj = placeCheeseAt(pick.r, pick.c);
+/** Buttons under the results; redrawn when the host changes (e.g. the host left). */
+function renderResultsFooter() {
+  const foot = $('mpResultsFooter');
+  if (!foot || !race) return;
+  const final = race.round >= TOTAL_ROUNDS, host = amHost();
+  foot.innerHTML =
+    (host ? `<button id="mpNext" class="primary">${final ? '🔁 Rematch' : `▶ Start Round ${race.round + 1}`}</button>`
+          : `<p class="sub">Waiting for the host to ${final ? 'start a rematch' : 'start the next round'}…</p>`) +
+    '<button id="mpQuit">← Leave</button>';
+  $('mpQuit').onclick = () => { leaveRoom(); window.showScreen('start'); };
+  if (host) {
+    $('mpNext').onclick = () => (final ? startMatch() : launch({ ...race, round: race.round + 1 }));
   }
 }
 
-// ── Listen players ────────────────────────────────────────────
-function listenPlayers(code) {
-  const playersRef = ref(rtdb, `rooms/${code}/players`);
-  onValue(playersRef, snap => {
-    const players = snap.val() || {};
-    mpPlayers = {};
-
-    Object.entries(players).forEach(([pid, p]) => {
-      if (pid === myPlayerId) return;
-      mpPlayers[pid] = p;
-
-      // Create rat mesh
-      if (!mpOtherRats[pid] && scene) {
-        const g = new THREE.Group();
-        // Name label
-        g.add(makeNameLabel(p.name, p.color||'#ff4444'));
-        new GLTFLoader().load(MODEL_URL, (gltf) => {
-          const m = gltf.scene;
-          m.scale.setScalar(MODEL_SCALE); m.rotation.y = MODEL_FACE; m.position.y = MODEL_Y;
-          m.traverse(o => {
-            if (o.isMesh) {
-                if (Array.isArray(o.material)) {
-                o.material = o.material.map(mat => {
-                    const m2 = mat.clone();
-                    m2.color.lerp(new THREE.Color(p.color||'#ff4444'), 0.6);
-                    m2.side = THREE.DoubleSide;
-                    return m2;
-                });
-                } else {
-                o.material = o.material.clone();
-                o.material.color.lerp(new THREE.Color(p.color||'#ff4444'), 0.6);
-                o.material.side = THREE.DoubleSide;
-                }
-                o.castShadow = true;
-            }
-            });
-          g.add(m);
-        }, undefined, () => {
-          const fb = new THREE.Mesh(
-            new THREE.SphereGeometry(0.8,12,12),
-            new THREE.MeshStandardMaterial({ color: new THREE.Color(p.color||'#ff4444') })
-          );
-          g.add(fb);
-        });
-        scene.add(g);
-        mpOtherRats[pid] = g;
-      }
-
-      // Update position
-      if (mpOtherRats[pid]) {
-        mpOtherRats[pid].position.set(p.x||0, 0, p.z||0);
-        mpOtherRats[pid].rotation.y = p.yaw||0;
-        // Keep label facing camera
-        const label = mpOtherRats[pid].children[0];
-        if (label && camera) label.lookAt(camera.position);
-      }
-
-      // Cheese stolen by someone else (notify only — penalty is handled by
-      // the room listener so it has a single source and resets cleanly)
-      if (p.hasCheese && !mpCheeseWinner && p.name !== myName) {
-        mpCheeseWinner = p.name;
-        showCheeseNotif(p.name);
-      }
-
-      // Maze winner (someone else finished)
-      if (p.finished && !mpMazeWinner) {
-        mpMazeWinner = p.name;
-        showMpStatus(`🏁 ${p.name} escaped the maze first!`);
-      }
-
-      // Track results
-      if (p.finished) {
-        mpResults[pid] = { pid, name:p.name, time:p.finishTime||0, hasCheese:p.hasCheese, finished:true };
-      }
-    });
-
-    // Remove rats for players who left
-    Object.keys(mpOtherRats).forEach(pid => {
-      if (!players[pid]) { scene.remove(mpOtherRats[pid]); delete mpOtherRats[pid]; }
-    });
-
-    // Only show results once EVERYONE has finished, so a fast finisher
-    // doesn't pop the board early and wrongly mark still-racing players DNF.
-    if (mpStarted && !mpResultsShown) {
-      const ids = Object.keys(players);
-      if (ids.length > 0 && ids.every(id => players[id] && players[id].finished)) {
-        showMpResults();
-      }
-    }
-  });
-  mpListeners.push(() => off(playersRef,'value'));
-  const roomRef = ref(rtdb, `rooms/${code}`);
-onValue(roomRef, snap => {
-    const data = snap.val() || {};
-    if (data.cheeseCollected && cheeses.length > 0) {
-        scene.remove(cheeses[0]); cheeses.splice(0,1);
-    }
-    // Derive the penalty fresh on every update: slowed only while the cheese
-    // is collected AND I'm not the one who got it. When the round resets
-    // (cheeseCollected back to false) this returns to full speed on its own,
-    // so it can't get stuck slow across rounds.
-    mySpeedPenalty = (data.cheeseCollected && !mpCheeseCollected) ? 0.55 : 1.0;
-});
-    mpListeners.push(() => off(roomRef, 'value'));
-}
-
-// ── MP loop ───────────────────────────────────────────────────
-function mpLoop() {
-  const rawDt = Math.min(clock.getDelta(), 0.1);
-  const dt = FIXED_DT;
-
-  // Run physics enough times to keep up with real time. The old version
-  // capped at one step per frame, which made the rat AND the race timer
-  // run slow whenever the frame rate dipped below 60fps.
-  _mpAcc += rawDt;
-  let _steps = 0;
-  while (_mpAcc >= FIXED_DT && _steps < 8) {
-    physicsTick(FIXED_DT , mySpeedPenalty);
-    if (mpStarted && !mpFinished) mpRaceTime += FIXED_DT;
-    animateCheeses(FIXED_DT); 
-    _mpAcc -= FIXED_DT;
-    _steps++;
-  }
-
-  if (mpStarted) {
-    document.getElementById('mpTimer').textContent = `⏱ ${mpRaceTime.toFixed(2)}s`;
-
-    // Broadcast position
-    if (myRoom && myPlayerId) {
-      update(ref(rtdb, `rooms/${myRoom}/players/${myPlayerId}`), {
-        x: rat.position.x, z: rat.position.z, yaw: getYaw(), finished: mpFinished
-      });
-    }
-  }
-
-  updateCamera(rat.position);
-
-  // Cheese collection
-  if (cheeses.length > 0 && cheeses[0].position.distanceTo(rat.position) < 1.6 && !mpCheeseCollected) {
-    mpCheeseCollected = true;
-    mpCheeseWinner    = myName;
-    showCheeseNotif(myName + ' (you)');
-    showMpStatus('🧀 You cut the cheese! Others are slowed!');
-    update(ref(rtdb, `rooms/${myRoom}`), { cheeseCollected: true });
-    update(ref(rtdb, `rooms/${myRoom}/players/${myPlayerId}`), { hasCheese:true });
-    mpResults[myPlayerId] = { ...mpResults[myPlayerId], hasCheese:true };
-    }
-
-  // Finish line
-  if (finishGate) { finishGate.rotation.z += dt*1.2; }
-  if (!mpFinished && mpStarted && rat.position.distanceTo(finishPos) < 2.4) {
-    mpFinished = true;
-    update(ref(rtdb, `rooms/${myRoom}/players/${myPlayerId}`), {
-      finished:true, finishTime: mpRaceTime
-    });
-    mpResults[myPlayerId] = { pid:myPlayerId, name:myName, time:mpRaceTime, hasCheese:mpCheeseCollected, finished:true };
-    if (!mpMazeWinner) {
-      mpMazeWinner = myName;
-      showMpStatus(`🏁 You escaped first! Time: ${mpRaceTime.toFixed(2)}s`);
-    } else {
-      showMpStatus(`🏁 You finished! Time: ${mpRaceTime.toFixed(2)}s`);
-    }
-    if (mpStarted && !mpFinished) {
-        document.getElementById('mpTimer').textContent = `⏱ ${mpRaceTime.toFixed(2)}s`;
-    }
-}
-
-  if (minimapOn) drawMinimap(rat.position, yaw, Object.values(mpPlayers));
-  updateLighting(dt, rat.position);
-  orbitControls.update();
-  renderer.render(scene, camera);
-}
+const round2 = (x) => Math.round(x * 100) / 100;

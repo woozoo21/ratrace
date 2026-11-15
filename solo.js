@@ -1,499 +1,427 @@
 // ============================================================
-// SOLO.JS — daily solo game logic
+// SOLO.JS — daily solo mode: timed cheese runs, ghosts, bot, leaderboard
 // ============================================================
 
-import * as THREE from 'three';
 import {
-  initEngine, onCheeseTemplateLoaded,
-  renderer, scene, camera, orbitControls, skybox,
-  rat, ghostRat, cheeses, cheeseTemplate, cheeseGeo, cheeseMat, cheeseMats,
-  startPos, finishPos, finishGate,
-  GW, GH, grid,
-  speed, yaw, lastRat, clock, accumulator,
-  nightMode, followCam, savedCamOffset, minimapOn,
-  setSpeed, setYaw, setAccumulator, setNightMode, setFollowCam, setSavedCamOffset, setMinimapOn,
-  FIXED_DT, CHEESE_GLOW, CELL, WALL_H,
-  makeRNG, toWorldX, toWorldZ, toCol, toRow,
-  generateMaze, placeCheeseAt, clearCheeses,
-  drawMinimap, updateLighting, updateCamera, physicsTick, animateCheeses,
-  ACCEL, FRICTION, TURN_RATE, MAX_SPEED,
+  initEngine, startLoop, setMaze, setCheeses, removeCheese, touchedCheese, atGate, setGateOpen,
+  resetPlayer, stepPlayer, makeRat, setNight, setMinimap, currentCamOffset,
+  scene, player, settings,
 } from './engine.js';
-import { getFirestore, doc, getDoc, setDoc, getDocs, collection, query, where, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
-import { createBotRat, startBot, stopBot, tickBot, isBotRunning } from './bot.js';
-import { initSplits, resetSplits, onCheeseCollected, onFinish, setGhostSplitTimes, getSplitPersonalBest, loadLeaderboardBest } from './sectors.js';
+import {
+  dateSeed, generateMaze, soloCheeseCells, sampleRun, escapeHtml, cleanName,
+} from './core.js';
+import { planBotRun } from './bot.js';
+import {
+  initSplits, resetSplits, markSplit, getRunSplits, setRival, setOverallBest, setSplitsVisible, pruneStorage,
+} from './sectors.js';
+import {
+  getFirestore, doc, getDoc, setDoc, getDocs, collection, query, where, orderBy, limit,
+} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
-// ── Firebase ─────────────────────────────────────────────────
 let db;
 export function initSoloFirebase(fbApp) { db = getFirestore(fbApp); }
 
-// ── Seeds ────────────────────────────────────────────────────
-const now = new Date();
-export const DAILY_SEED  = now.getFullYear() * 10000 + (now.getMonth()+1)*100 + now.getDate();
-const dayOfWeek          = now.getDay();
-const daysToMonday       = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-const monday             = new Date(now); monday.setDate(now.getDate() - daysToMonday);
-export const WEEKLY_SEED = monday.getFullYear()*10000 + (monday.getMonth()+1)*100 + monday.getDate();
-const GHOST_KEY          = `ratrace_ghost_v2_${DAILY_SEED}`;
-
-export const SOLO_LEVELS = {
-  easy:   { cw:6, ch:6, par:20, label:'Easy',   seed:DAILY_SEED,   cheeseCount:7  },
-  medium: { cw:6, ch:6, par:35, label:'Medium', seed:DAILY_SEED+1, cheeseCount:14 },
-  hard:   { cw:6, ch:6, par:55, label:'Hard',   seed:DAILY_SEED+2, cheeseCount:14 },
+// ── Daily mazes ──────────────────────────────────────────────
+const TODAY  = dateSeed();
+const MONDAY = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; })();
+const LEVELS = {
+  easy:   { label: 'Easy',   par: 20, seed: TODAY,     cheese: 7,  spread: false },
+  medium: { label: 'Medium', par: 35, seed: TODAY + 1, cheese: 14, spread: false },
+  hard:   { label: 'Hard',   par: 55, seed: TODAY + 2, cheese: 14, spread: true  },
 };
+const MAZE_CELLS    = 6;
+const GHOST_PREFIX  = 'ratrace_ghost_v2_';
+const NAME_KEY      = 'ratrace_username';
+const RECORD_EVERY  = 3;      // physics ticks between recorded frames (20 Hz)
+const BOARD_TTL_MS  = 30000;
+const PAR_FACTOR    = 1.5;    // par = the bot's time on today's maze × this, rounded up
 
 // ── State ────────────────────────────────────────────────────
-let levelKey  = 'easy';
-let collected = 0, total = 0, raceTime = 0;
-let finished  = false, started = false;
-let currentRun = [];
-let ghostOn   = true, ghostRecording = null, ghostBestTime = null;
-let myName    = localStorage.getItem('ratrace_username') || null;
-let _acc      = 0;
-let splitsVisible = false;
+let active = false, built = false;
+let levelKey = 'easy', maze = null, cheeseCells = [];
+let collected = 0, total = 0, raceTime = 0, tick = 0, started = false, finished = false;
+let recording = [], lastRun = null;
+let best = null;              // my best run today on this level: { time, frames, splits }
+let ghost = null;             // the run being raced: best, or a leaderboard entry { name, … }
+let bot = null;               // planned bot run, when the bot is on
+let ghostOn = true, splitsOn = true, botOn = false;
+let ghostMesh = null, botMesh = null;
+let hudText = '', notice = '';
+let par = 0;                  // seconds; from the bot's run, or the level's fallback until that is planned
+const botPlans = {};          // level → planned run (same maze all day)
+const boards = {};            // level → { at, rows }
+const sample = { x: 0, z: 0, yaw: 0 };
 
-// ── Ghost ─────────────────────────────────────────────────────
-function ghostKey(lvl)  { return `${GHOST_KEY}_${lvl}`; }
-function loadGhost(lvl) {
+const $ = (id) => document.getElementById(id);
+const show = (id, on, mode = 'block') => { $(id).style.display = on ? mode : 'none'; };
+const round3 = (x) => Math.round(x * 1000) / 1000;
+
+// ── Ghost storage ────────────────────────────────────────────
+const ghostKey = (lvl) => `${GHOST_PREFIX}${TODAY}_${lvl}`;
+
+function loadBest(lvl) {
   try {
-    const raw  = localStorage.getItem(ghostKey(lvl));
-    if (!raw)  { ghostRecording = null; ghostBestTime = null; return; }
-    const data = JSON.parse(raw);
-    ghostRecording = data.frames; ghostBestTime = data.time;
-  } catch { ghostRecording = null; ghostBestTime = null; }
+    const data = JSON.parse(localStorage.getItem(ghostKey(lvl)));
+    return data && data.frames ? { time: data.time, frames: data.frames, splits: data.splits || [] } : null;
+  } catch { return null; }
 }
-function saveGhost(lvl, time, frames) {
-  try { localStorage.setItem(ghostKey(lvl), JSON.stringify({ time, frames })); } catch {}
-}
-function updateGhostHud() {
-  const el = document.getElementById('ghosthud');
-  if (!el) return;
-  el.textContent = !ghostOn ? '' : ghostBestTime !== null
-    ? `Ghost: ${ghostBestTime.toFixed(2)}s` : 'Ghost: no best yet';
-}
-function tickGhost(t) {
-  if (!ghostOn || !ghostRecording || ghostRecording.length < 2) { ghostRat.visible = false; return; }
-  ghostRat.visible = true;
-  let lo = 0, hi = ghostRecording.length - 1;
-  while (lo < hi - 1) { const mid = (lo+hi)>>1; if (ghostRecording[mid].t <= t) lo=mid; else hi=mid; }
-  const a = ghostRecording[lo], b = ghostRecording[hi];
-  const span = b.t - a.t, alpha = span > 0 ? (t - a.t)/span : 0;
-  ghostRat.position.x = a.x + (b.x - a.x)*alpha;
-  ghostRat.position.z = a.z + (b.z - a.z)*alpha;
-  ghostRat.position.y = 0;
-  let dyaw = b.yaw - a.yaw;
-  if (dyaw >  Math.PI) dyaw -= Math.PI*2;
-  if (dyaw < -Math.PI) dyaw += Math.PI*2;
-  ghostRat.rotation.y = a.yaw + dyaw*alpha;
+function saveBest(lvl, run) {
+  try { localStorage.setItem(ghostKey(lvl), JSON.stringify(run)); }
+  catch (e) { console.warn('Could not save ghost', e); }
 }
 
-// ── Cheese spawn ─────────────────────────────────────────────
-function spawnCheese() {
-  for (const c of cheeses) scene.remove(c);
-  clearCheeses();
-  const L     = SOLO_LEVELS[levelKey];
-  const count = Math.min(L.cheeseCount, 99);
+// ── HUD ──────────────────────────────────────────────────────
+function updateHud() {
+  const text = `🧀 ${collected}/${total}  |  ⏱ ${raceTime.toFixed(2)}s`;
+  if (text !== hudText) $('hud').textContent = hudText = text;
+}
 
-  if (levelKey === 'hard') {
-    const dist = Array.from({length:GH}, ()=>Array(GW).fill(-1));
-    const queue = [[1,1]]; dist[1][1] = 0;
-    while (queue.length) {
-      const [r,c] = queue.shift();
-      for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-        const nr=r+dr, nc=c+dc;
-        if (nr>=0&&nr<GH&&nc>=0&&nc<GW&&!grid[nr][nc]&&dist[nr][nc]===-1) {
-          dist[nr][nc] = dist[r][c]+1; queue.push([nr,nc]);
-        }
-      }
-    }
-    const open = [];
-    for (let r=1;r<GH-1;r++) for (let c=1;c<GW-1;c++) {
-      if (grid[r][c]||(r===1&&c===1)||(r===GH-2&&c===GW-2)||dist[r][c]===-1) continue;
-      let nbrs = 0;
-      for (const [dr,dc] of [[0,1],[0,-1],[1,0],[-1,0]]) if (!grid[r+dr][c+dc]) nbrs++;
-      open.push({r,c,d:dist[r][c],dead:nbrs===1});
-    }
-    open.sort((a,b) => b.d - a.d);
-    const step = Math.ceil(open.length / count);
-    const chosen = [];
-    for (let i=0; i<open.length && chosen.length<count; i+=Math.max(1,step)) chosen.push(open[i]);
-    if (chosen.length < count) for (const cell of open) { if (chosen.length>=count) break; if (!chosen.includes(cell)) chosen.push(cell); }
-    for (const {r,c} of chosen) placeCheeseAt(r, c);
-  } else {
-    const open = [];
-    for (let r=1;r<GH-1;r++) for (let c=1;c<GW-1;c++)
-      if (!grid[r][c] && !(r===1&&c===1) && !(r===GH-2&&c===GW-2)) open.push([r,c]);
-    const crand = makeRNG(L.seed + 777);
-    for (let i=open.length-1; i>0; i--) { const j=(crand()*(i+1))|0; [open[i],open[j]]=[open[j],open[i]]; }
-    for (let i=0; i<Math.min(count,open.length); i++) { const [r,c]=open[i]; placeCheeseAt(r,c); }
+function updateSideHud() {
+  const lines = [];
+  if (ghostOn) {
+    lines.push(!ghost ? 'Ghost: no best yet'
+      : `Ghost: ${ghost.time.toFixed(2)}s${ghost.name ? ` (${ghost.name})` : ''}`);
   }
-  total = cheeses.length;
+  if (bot) lines.push(`🤖 Bot: ${bot.time.toFixed(2)}s`);
+  if (notice) lines.push(notice);
+  $('ghosthud').textContent = lines.join('\n');
+  // The comparison row follows the bot when it is running, otherwise the ghost.
+  if (bot) setRival('🤖', bot.splits);
+  else if (ghostOn && ghost) setRival('👻', ghost.splits);
+  else setRival('', null);
 }
 
-// ── Reset ────────────────────────────────────────────────────
-function resetRace() {
-  const L = SOLO_LEVELS[levelKey];
-  generateMaze(L.cw, L.ch, L.seed);
-  spawnCheese();
-  initSplits(levelKey, cheeses.length);
-  rat.position.copy(startPos); rat.rotation.y = Math.PI/2;
-  setSpeed(0); setYaw(Math.PI/2);
-  collected=0; raceTime=0; finished=false; started=false; currentRun=[];
-  ghostRat.visible = false;
-  document.getElementById('win').style.display = 'none';
-  lastRat.copy(rat.position);
-  camera.position.set(startPos.x, 18, startPos.z+22);
-  orbitControls.target.set(startPos.x, 1.5, startPos.z);
-  orbitControls.update();
-  updateHUD(); updateGhostHud(); stopBot();
-  resetSplits(levelKey, cheeses.length);
+// ── Race lifecycle ───────────────────────────────────────────
+function showPar() {
+  $('level').textContent = `Level: ${LEVELS[levelKey].label}  ·  Par: ${par}s`;
+}
+
+/** The bot's run for today's maze on this level (planned once, then cached). */
+function botPlan(key) {
+  if (!(key in botPlans)) botPlans[key] = planBotRun(maze, cheeseCells, LEVELS[key].seed);
+  return botPlans[key];
 }
 
 function setLevel(key) {
+  const rival = key === levelKey && ghost && ghost.name ? ghost : null;   // keep a leaderboard ghost across restarts
   levelKey = key;
-  const L  = SOLO_LEVELS[key];
-  document.getElementById('level').textContent = `Level: ${L.label}  ·  Par: ${L.par}s`;
-  loadGhost(key); updateGhostHud(); resetRace();
-  loadLeaderboardBest(db, key, SOLO_LEVELS[key].cheeseCount, DAILY_SEED, collection, query, where, orderBy, limit, getDocs);
+  const L = LEVELS[key];
+  maze = generateMaze(MAZE_CELLS, MAZE_CELLS, L.seed);
+  cheeseCells = soloCheeseCells(maze, L.seed, L.cheese, L.spread);
+  setMaze(maze);
+  par = L.par;
+  showPar();
+  setTimeout(() => {                                       // plan after the maze has painted
+    const plan = levelKey === key && botPlan(key);
+    if (plan) { par = Math.ceil(plan.time * PAR_FACTOR); showPar(); }
+  }, 0);
+  best = loadBest(key);
+  ghost = rival || best;
+  bot = botOn ? botPlan(key) : null;                       // the bot stays on across restarts and levels
+  if (!rival) notice = '';
+  initSplits(`${TODAY}_${key}`, cheeseCells.length);
+  show('board', false);
+  restart();
+  syncButtons();
+  // Purple sectors need today's leaderboard; fetch it in the background.
+  loadBoard(key).then(rows => { if (levelKey === key) setOverallBest(bestSectors(rows)); }).catch(() => {});
 }
 
-function updateHUD() {
-  document.getElementById('hud').textContent = `🧀 ${collected}/${total}  |  ⏱ ${raceTime.toFixed(2)}s`;
+function restart() {
+  setCheeses(cheeseCells);
+  resetPlayer();
+  collected = 0; total = cheeseCells.length; raceTime = 0; tick = 0;
+  started = false; finished = false;
+  recording = [{ t: 0, x: round3(player.x), z: round3(player.z), yaw: round3(player.yaw) }];
+  setGateOpen(total === 0);
+  resetSplits();
+  ghostMesh.visible = false;
+  show('win', false);
+  updateHud();
+  updateSideHud();
 }
 
-// ── Leaderboard ───────────────────────────────────────────────
-const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-async function addScore(name, time, lvl, frames) {
-  const docId    = `${WEEKLY_SEED}_${lvl}_${name}`;
-  const ref      = doc(db, 'scores', docId);
+function finish() {
+  finished = true;
+  recordFrame();
+  markSplit(raceTime);
+  lastRun = { time: raceTime, frames: recording, splits: getRunSplits() };
+  const newBest = !best || raceTime < best.time;
+  if (newBest) {
+    const wasOwnGhost = ghost === best;
+    best = lastRun;
+    saveBest(levelKey, best);
+    if (wasOwnGhost) ghost = best;
+  }
+  updateSideHud();
+
+  const L = LEVELS[levelKey];
+  const lines = [
+    `${L.label} &nbsp;·&nbsp; Time: ${raceTime.toFixed(2)}s &nbsp;·&nbsp; Par: ${par}s`,
+    (newBest ? 'New best time! Ghost updated. ' : '') +
+      (raceTime <= par ? 'You beat the par time!' : '⏱ Over par — try again!'),
+  ];
+  if (bot) {
+    const gap = raceTime - bot.time;
+    lines.push(gap <= 0 ? `🤖 You beat the bot by ${(-gap).toFixed(2)}s!` : `🤖 The bot was ${gap.toFixed(2)}s faster.`);
+  }
+  $('winMsg').innerHTML = `🏁 Finished!<br><span style="font-size:15px">${lines.join('<br>')}</span>`;
+  $('nameInput').value = localStorage.getItem(NAME_KEY) || '';
+  $('saveBtn').disabled = false;
+  $('saveMsg').textContent = '';
+  show('win', true);
+}
+
+function recordFrame() {
+  recording.push({ t: round3(raceTime), x: round3(player.x), z: round3(player.z), yaw: round3(player.yaw) });
+}
+
+// ── Leaderboard ──────────────────────────────────────────────
+const scoreId = (lvl, name) => `${TODAY}_${lvl}_${name}`;
+
+/** Today's top 10 for a level (cached briefly; each row carries its ghost frames). */
+async function loadBoard(lvl, fresh = false) {
+  const hit = boards[lvl];
+  if (!fresh && hit && Date.now() - hit.at < BOARD_TTL_MS) return hit.rows;
+  const snap = await getDocs(query(collection(db, 'scores'),
+    where('lvl', '==', lvl), where('date', '==', TODAY), orderBy('time'), limit(10)));
+  const rows = snap.docs.map(d => d.data());
+  boards[lvl] = { at: Date.now(), rows };
+  return rows;
+}
+
+function bestSectors(rows) {
+  const out = [];
+  for (const row of rows) (row.splits || []).forEach((t, i) => { if (t > 0 && !(t >= out[i])) out[i] = t; });
+  return out;
+}
+
+/** @returns 'saved' | 'kept' (an equal or better time was already on the board) */
+async function submitScore(name, run, lvl) {
+  const ref = doc(db, 'scores', scoreId(lvl, name));
   const existing = await getDoc(ref);
-  
-  // If doc exists and it's not the same person (different time means different person)
-  // Allow overwrite only if this is a better time for the same name
-  if (existing.exists() && existing.data().time <= time) return;
-  
-  const sampled = frames.filter((_,i) => i%5===0);
-    const splits = getSplitPersonalBest();
-  await setDoc(ref, {
-    name, time, lvl, weekSeed: WEEKLY_SEED, date: DAILY_SEED, frames: sampled,
-    splits: splits.map(s => s === Infinity ? null : s),
-  });
+  if (existing.exists() && existing.data().time <= run.time) return 'kept';
+  const frames = run.frames.filter((_, i) => i % 2 === 0 || i === run.frames.length - 1);
+  await setDoc(ref, { name, time: run.time, lvl, date: TODAY, frames, splits: run.splits });
+  delete boards[lvl];
+  return 'saved';
 }
 
-async function renderBoard(lvl) {
-  const boardList = document.getElementById('boardList');
-  if (lvl === 'weekly') {
-  boardList.innerHTML = '<p style="color:#aaa">Loading…</p>';
-
-  // Fetch top 3 for each day
-  const dayData = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday); d.setDate(monday.getDate() + i);
-    const seed = d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate();
-    const dayName = DAY_NAMES[d.getDay()];
-    const isToday = seed === DAILY_SEED;
-    let entries = [];
-    try {
-      const q = query(collection(db,'scores'), where('date','==',seed), orderBy('time'), limit(3));
-      const snap = await getDocs(q);
-      snap.forEach(d => entries.push(d.data()));
-    } catch(e) {}
-    dayData.push({ dayName, isToday, entries });
+async function saveScore() {
+  const run = lastRun, lvl = levelKey;
+  if (!run) return;
+  const name = cleanName($('nameInput').value);
+  const say = (msg) => { $('saveMsg').textContent = msg; };
+  $('saveBtn').disabled = true;
+  try {
+    if (name !== localStorage.getItem(NAME_KEY)) {
+      say('Checking name…');
+      if ((await getDoc(doc(db, 'scores', scoreId(lvl, name)))).exists()) {
+        say('❌ Name already taken today — choose another.');
+        $('saveBtn').disabled = false;
+        return;
+      }
+    }
+    localStorage.setItem(NAME_KEY, name);
+    $('nameInput').value = name;
+    say('Saving…');
+    const result = await submitScore(name, run, lvl);
+    say(result === 'saved' ? 'Saved! 🧀  Open the leaderboard to see standings.'
+                           : 'Your earlier time today is still your best.');
+  } catch (e) {
+    console.error(e);
+    say('❌ Could not save — check your connection.');
+    $('saveBtn').disabled = false;
   }
-
-  // Build table: days as columns, ranks as rows
-  let html = '<p style="color:#9fe;margin-bottom:10px">Weekly Top 3</p>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-
-  // Header row
-  html += '<tr>';
-  html += '<td style="padding:4px 6px;color:#555"></td>';
-  dayData.forEach(({ dayName, isToday }) => {
-    html += `<th style="padding:4px 6px;color:${isToday?'#ffd35a':'#9fe'};text-align:center">${dayName}</th>`;
-  });
-  html += '</tr>';
-
-  // Rows 1, 2, 3
-  for (let rank = 0; rank < 3; rank++) {
-    const medal = rank===0?'🥇':rank===1?'🥈':'🥉';
-    html += '<tr>';
-    html += `<td style="padding:4px 6px">${medal}</td>`;
-    dayData.forEach(({ entries }) => {
-      const e = entries[rank];
-      html += `<td style="padding:4px 6px;text-align:center;color:${rank===0?'#ffd35a':'#fff'}">`;
-      html += e ? `${e.name}<br><span style="color:#ffd35a;font-size:11px">${e.time.toFixed(2)}s</span>` : '<span style="color:#555">—</span>';
-      html += '</td>';
-    });
-    html += '</tr>';
-  }
-
-  html += '</table>';
-  boardList.innerHTML = html;
-  return;
 }
 
-  // Daily top 10 for this level
-  boardList.innerHTML = '<p style="color:#aaa">Loading…</p>';
-  const q = query(collection(db,'scores'), where('lvl','==',lvl), where('date','==',DAILY_SEED), orderBy('time'), limit(10));
-  let snap;
-  try { snap = await getDocs(q); } catch(e) { boardList.innerHTML='<p style="color:red">Error — check console.</p>'; console.error(e); return; }
-  const label = SOLO_LEVELS[lvl].label;
-  if (snap.empty) { boardList.innerHTML=`<p>No times yet for <b>${label}</b> today. Be the first!</p>`; return; }
-  let html = `<p style="color:#9fe">${label} — today's top 10</p><ol style="padding-left:20px;line-height:1.8">`;
-  snap.forEach(d => {
-    const s=d.data();
-    html += `<li>${s.name} — ${s.time.toFixed(2)}s <button class="racebtn" data-id="${d.id}" style="font-size:11px;padding:2px 7px;background:#222;color:#9fe;border:1px solid #9fe;border-radius:4px;cursor:pointer">Ghost Race</button></li>`;
-  });
-  html += '</ol>';
-  boardList.innerHTML = html;
-  boardList.querySelectorAll('.racebtn').forEach(btn => {
-    btn.onclick = async () => {
-      const snap = await getDoc(doc(db,'scores',btn.dataset.id));
-      if (!snap.exists()) return;
-      const data = snap.data();
-      ghostRecording=data.frames; ghostBestTime=data.time; ghostOn=true;
-      setGhostSplitTimes(data.splits || []);
-      document.getElementById('btnGhost').textContent='Ghost (G): On';
-      updateGhostHud();
-      document.getElementById('board').style.display='none';
-      resetRace();
-      alert(`Racing ghost of ${data.name} (${data.time.toFixed(2)}s)!`);
+async function renderBoard(view) {
+  const list = $('boardList');
+  list.innerHTML = '<p style="color:#aaa">Loading…</p>';
+  try {
+    if (view === 'weekly') list.innerHTML = await weeklyHtml();
+    else renderDaily(list, view, await loadBoard(view, true));
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = '<p style="color:#f66">Could not load the leaderboard.</p>';
+  }
+}
+
+function renderDaily(list, lvl, rows) {
+  const label = LEVELS[lvl].label;
+  if (!rows.length) { list.innerHTML = `<p>No times yet for <b>${label}</b> today. Be the first!</p>`; return; }
+  list.innerHTML = `<p style="color:#9fe">${label} — today's top 10</p><ol>` + rows.map((s, i) =>
+    `<li>${escapeHtml(s.name)} — ${s.time.toFixed(2)}s <button class="racebtn" data-i="${i}">Ghost Race</button></li>`
+  ).join('') + '</ol>';
+  list.querySelectorAll('.racebtn').forEach((btn) => {
+    btn.onclick = () => {
+      const s = rows[btn.dataset.i];
+      if (lvl !== levelKey) setLevel(lvl);
+      ghost = { name: s.name, time: s.time, frames: s.frames || [], splits: s.splits || [] };
+      ghostOn = true;
+      notice = `Racing ${s.name}'s ghost`;
+      show('board', false);
+      restart();
+      syncButtons();
     };
   });
 }
 
-// ── Controls ─────────────────────────────────────────────────
-function buildControls() {
-  const ctrl = document.getElementById('controls');
-  ctrl.innerHTML = '';
-  [
-    ['btnEasy','Easy (1)'], ['btnMedium','Medium (2)'], ['btnHard','Hard (3)'],
-    ['btnBoard','Leaderboard (L)'], ['btnFollow','Follow Cam (F): On'],
-    ['btnSaveCam','Save Cam'], ['btnGhost','Ghost (G): On'],
-    ['btnNight','Night Mode (N): Off'], ['btnMinimap','Minimap (M): On'],
-    ['btnBot','🤖 Bot Race'], ['btnMode','🏠 Menu'], ['btnSplits','Splits: On'],
-  ].forEach(([id,txt]) => {
-    const b = document.createElement('button'); b.id = id; b.textContent = txt; ctrl.appendChild(b);
+async function weeklyHtml() {
+  const days = await Promise.all(Array.from({ length: 7 }, async (_, i) => {
+    const d = new Date(MONDAY); d.setDate(MONDAY.getDate() + i);
+    const seed = dateSeed(d);
+    let rows = [];
+    try {
+      const snap = await getDocs(query(collection(db, 'scores'), where('date', '==', seed), orderBy('time'), limit(3)));
+      rows = snap.docs.map(x => x.data());
+    } catch (e) { console.error(e); }
+    return { name: d.toLocaleDateString(undefined, { weekday: 'short' }), today: seed === TODAY, rows };
+  }));
+  let html = '<p style="color:#9fe;margin-bottom:10px">This week — top 3 each day</p><table class="weekTable"><tr><td></td>';
+  for (const d of days) html += `<th style="color:${d.today ? '#ffd35a' : '#9fe'}">${d.name}</th>`;
+  html += '</tr>';
+  ['🥇', '🥈', '🥉'].forEach((medal, rank) => {
+    html += `<tr><td>${medal}</td>`;
+    for (const d of days) {
+      const e = d.rows[rank];
+      html += '<td>' + (e ? `${escapeHtml(e.name)}<br><span style="color:#ffd35a;font-size:11px">${e.time.toFixed(2)}s</span>`
+                          : '<span style="color:#555">—</span>') + '</td>';
+    }
+    html += '</tr>';
   });
-
-  document.getElementById('btnSplits').onclick = (e) => {
-    splitsVisible = !splitsVisible;
-    window._splitsVisible = splitsVisible;
-    document.getElementById('splits').style.display = splitsVisible ? 'flex' : 'none';
-    document.getElementById('ghostSplits').style.display = splitsVisible && ghostSplitTimes.length ? 'flex' : 'none';
-    e.target.textContent = `Splits: ${splitsVisible ? 'On' : 'Off'}`;
-  };
-  document.getElementById('btnEasy').onclick   = () => { setLevel('easy');   document.getElementById('board').style.display='none'; };
-  document.getElementById('btnMedium').onclick = () => { setLevel('medium'); document.getElementById('board').style.display='none'; };
-  document.getElementById('btnHard').onclick   = () => { setLevel('hard');   document.getElementById('board').style.display='none'; };
-  document.getElementById('btnBoard').onclick  = () => { renderBoard(levelKey); document.getElementById('board').style.display='block'; };
-  document.getElementById('boardClose').onclick= () => { document.getElementById('board').style.display='none'; };
-  document.getElementById('board').querySelectorAll('.lvlbtns button').forEach(b => { b.onclick = () => renderBoard(b.dataset.lvl); });
-
-  document.getElementById('btnGhost').onclick = (e) => {
-    ghostOn = !ghostOn; e.target.textContent = 'Ghost: '+(ghostOn?'On':'Off');
-    if (!ghostOn) ghostRat.visible = false; updateGhostHud();
-  };
-  document.getElementById('btnFollow').onclick = (e) => {
-    setFollowCam(!followCam); e.target.textContent = 'Follow Cam: '+(followCam?'On':'Off');
-  };
-  document.getElementById('btnSaveCam').onclick = (e) => {
-    if (savedCamOffset) { setSavedCamOffset(null); e.target.textContent='Save Cam'; }
-    else { setSavedCamOffset(new THREE.Vector3().subVectors(camera.position, orbitControls.target)); e.target.textContent='✅ Cam Saved'; }
-  };
-  document.getElementById('btnNight').onclick = (e) => {
-    setNightMode(!nightMode); e.target.textContent='Night Mode: '+(nightMode?'On':'Off');
-    if (nightMode) { scene.background=new THREE.Color(0x000000); scene.environment=null; }
-    else { scene.background=skybox; scene.environment=skybox; }
-    cheeseMats.forEach(m => { m.emissiveIntensity = nightMode ? 0 : CHEESE_GLOW; });
-  };
-  document.getElementById('btnMinimap').onclick = () => {
-    setMinimapOn(!minimapOn);
-    document.getElementById('minimap').style.display = minimapOn?'block':'none';
-    document.getElementById('btnMinimap').textContent = 'Minimap: '+(minimapOn?'On (M)':'Off (M)');
-  };
-  document.getElementById('btnMode').onclick = () => {
-  window.showScreen('start');
-  };
-  document.getElementById('btnBot').onclick = (e) => {
-    if (isBotRunning()) {
-      stopBot();
-      e.target.textContent = '🤖 Bot Race';
-    } else {
-      e.target.textContent = '⏳ Training...';
-      setTimeout(() => {
-        createBotRat('#ff4444');
-        startBot(SOLO_LEVELS[levelKey].seed);
-        e.target.textContent = '🤖 Stop Bot';
-      }, 50); // small delay so UI updates before training freezes browser
-    }
-  };
-
-  // Save score
-  const nameInput = document.getElementById('nameInput');
-  const saveBtn   = document.getElementById('saveBtn');
-  const saveMsg   = document.getElementById('saveMsg');
-  if (myName) { nameInput.value = myName; }
-  saveBtn.onclick = async () => {
-    let nm = (nameInput.value||'Anon').trim()||'Anon';
-    saveBtn.disabled = true;
-    saveMsg.textContent = 'Checking name…';
-
-    // Check if name is taken by someone with a different stored name
-    const storedName = localStorage.getItem('ratrace_username');
-    if (nm !== storedName) {
-      // Check if this name exists in the leaderboard already
-      const checkId  = `${WEEKLY_SEED}_${levelKey}_${nm}`;
-      const checkRef = doc(db, 'scores', checkId);
-      const checkSnap = await getDoc(checkRef);
-      if (checkSnap.exists()) {
-        saveMsg.textContent = '❌ Name already taken! Choose a different name.';
-        saveBtn.disabled = false;
-        return;
-      }
-    }
-
-    localStorage.setItem('ratrace_username', nm);
-    myName = nm; nameInput.value = nm;
-    saveMsg.textContent = 'Saving…';
-    await addScore(nm, raceTime, levelKey, currentRun);
-    saveMsg.textContent = 'Saved! 🧀  Open 🏆 Leaderboard to see standings.';
-  };
-  nameInput.addEventListener('keydown', e => { if (e.key==='Enter') saveBtn.click(); });
-  // Mobile menu buttons
-  const mbEasy = document.getElementById('mbEasy');
-  const mbMed  = document.getElementById('mbMedium');
-  const mbHard = document.getElementById('mbHard');
-  const mbBoard = document.getElementById('mbBoard');
-  const mbMenu = document.getElementById('mbMenu');
-  if (mbEasy)  mbEasy.onclick  = () => { setLevel('easy');   document.getElementById('board').style.display='none'; };
-  if (mbMed)   mbMed.onclick   = () => { setLevel('medium'); document.getElementById('board').style.display='none'; };
-  if (mbHard)  mbHard.onclick  = () => { setLevel('hard');   document.getElementById('board').style.display='none'; };
-  if (mbBoard) mbBoard.onclick = () => { renderBoard(levelKey); document.getElementById('board').style.display='block'; };
-  if (mbMenu)  mbMenu.onclick  = () => { window.showScreen('start'); };
-  if (mbMenu)  mbMenu.onclick  = () => { window.showScreen('start'); };
-  const mbSplits = document.getElementById('mbSplits');
-  if (mbSplits) mbSplits.onclick = () => { document.getElementById('btnSplits')?.click(); };
+  return html + '</table>';
 }
 
-function handleKeys(k) {
-  if (k==='m') { setMinimapOn(!minimapOn); document.getElementById('minimap').style.display=minimapOn?'block':'none'; }
-  if (k==='1') { setLevel('easy');   document.getElementById('board').style.display='none'; }
-  if (k==='2') { setLevel('medium'); document.getElementById('board').style.display='none'; }
-  if (k==='3') { setLevel('hard');   document.getElementById('board').style.display='none'; }
-  if (k==='f') { const b=document.getElementById('btnFollow');   if(b) b.click(); }
-  if (k==='g') { const b=document.getElementById('btnGhost');    if(b) b.click(); }
-  if (k==='n') { const b=document.getElementById('btnNight');    if(b) b.click(); }
-  if (k==='l') {
-    const board=document.getElementById('board');
-    if (board.style.display==='block') board.style.display='none';
-    else { renderBoard(levelKey); board.style.display='block'; }
+function toggleBoard() {
+  const open = $('board').style.display === 'block';
+  show('board', !open);
+  if (!open) renderBoard(levelKey);
+}
+
+// ── Bot ──────────────────────────────────────────────────────
+function toggleBot() {
+  if (botOn) { botOn = false; bot = null; botMesh.visible = false; restart(); syncButtons(); return; }
+  botOn = true;
+  $('btn-bot').textContent = '⏳ Planning…';
+  const key = levelKey;
+  setTimeout(() => {                                       // let the label paint before the planner runs
+    if (key !== levelKey) return;
+    bot = botPlan(key);
+    notice = bot ? '' : 'Bot could not solve this maze';
+    restart();
+    syncButtons();
+  }, 30);
+}
+
+// ── Controls ─────────────────────────────────────────────────
+const onOff = (v) => (v ? 'On' : 'Off');
+// [id, key, label(), action]
+const BUTTONS = [
+  ['easy',    '1', () => 'Easy (1)',    () => setLevel('easy')],
+  ['medium',  '2', () => 'Medium (2)',  () => setLevel('medium')],
+  ['hard',    '3', () => 'Hard (3)',    () => setLevel('hard')],
+  ['board',   'l', () => 'Leaderboard (L)', toggleBoard],
+  ['follow',  'f', () => `Follow Cam (F): ${onOff(settings.followCam)}`, () => { settings.followCam = !settings.followCam; }],
+  ['savecam', '',  () => (settings.camOffset ? '✅ Cam Saved' : 'Save Cam'),
+                   () => { settings.camOffset = settings.camOffset ? null : currentCamOffset(); }],
+  ['ghost',   'g', () => `Ghost (G): ${onOff(ghostOn)}`, () => { ghostOn = !ghostOn; if (!ghostOn) ghostMesh.visible = false; updateSideHud(); }],
+  ['night',   'n', () => `Night (N): ${onOff(settings.night)}`, () => setNight(!settings.night)],
+  ['minimap', 'm', () => `Minimap (M): ${onOff(settings.minimap)}`, () => setMinimap(!settings.minimap)],
+  ['splits',  't', () => `Splits (T): ${onOff(splitsOn)}`, () => { splitsOn = !splitsOn; setSplitsVisible(splitsOn); }],
+  ['bot',     'b', () => (botOn ? '🤖 Stop Bot (B)' : '🤖 Bot Race (B)'), toggleBot],
+  ['menu',    '',  () => '🏠 Menu', () => window.showScreen('start')],
+];
+
+function syncButtons() {
+  for (const [id, , label] of BUTTONS) {
+    const b = $(`btn-${id}`);
+    if (b) { b.textContent = label(); b.classList.toggle('active', id === levelKey); }
   }
 }
-window.addEventListener('keydown', e => { if (e.target.tagName!=='INPUT') handleKeys(e.key.toLowerCase()); });
 
-// ── Entry point ───────────────────────────────────────────────
-export function startSolo(gameScreen) {
-window._mpCanAccel = true;
-  document.getElementById('info').style.display    = 'block';
-  document.getElementById('mpHud').style.display   = 'none';
-  document.getElementById('board').style.display   = 'none';
+function buildControls() {
+  const ctrl = $('controls');
+  ctrl.innerHTML = '';
+  for (const [id, , , action] of BUTTONS) {
+    const b = document.createElement('button');
+    b.id = `btn-${id}`;
+    b.onclick = () => { action(); syncButtons(); document.body.classList.remove('menu-open'); b.blur(); };
+    ctrl.appendChild(b);
+  }
+  syncButtons();
+}
 
-  initEngine(gameScreen, () => {
-    buildControls();
-    onCheeseTemplateLoaded(() => spawnCheese());
-    loadGhost(levelKey);
-    setLevel(levelKey);
-    renderer.setAnimationLoop(soloLoop);
+function bindOnce() {
+  $('boardClose').onclick = () => show('board', false);
+  $('board').querySelectorAll('.lvlbtns button').forEach((b) => { b.onclick = () => renderBoard(b.dataset.lvl); });
+  $('saveBtn').onclick = saveScore;
+  $('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveScore(); });
+  window.addEventListener('keydown', (e) => {
+    if (!active || e.repeat || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const hit = BUTTONS.find(b => b[1] && b[1] === e.key.toLowerCase());
+    if (hit) { hit[3](); syncButtons(); }
   });
+  ghostMesh = makeRat({ opacity: 0.35 });
+  botMesh   = makeRat({ tint: '#ff4444' });
+  ghostMesh.visible = botMesh.visible = false;
+  scene.add(ghostMesh, botMesh);
+  pruneStorage([GHOST_PREFIX, 'ratrace_splits_'], `_${TODAY}_`);
 }
 
 // ── Loop ─────────────────────────────────────────────────────
-let _soloAcc = 0;
-function soloLoop() {
-  const rawDt = Math.min(clock.getDelta(), 0.1);
-_soloAcc += rawDt;
-const dt = FIXED_DT;
+function fixedStep(dt) {
+  stepPlayer(dt);
+  if (!started && Math.abs(player.speed) > 0.5) started = true;
+  if (!started || finished) return;
 
-while (_soloAcc >= FIXED_DT) {
-
-  physicsTick(FIXED_DT, 1);
-
-  if (!started && Math.abs(speed) > 0.5)
-    started = true;
-
-  if (started && !finished)
-    raceTime += FIXED_DT;
-
-  if (ghostOn && started && !finished) {
-    currentRun.push({
-      t: raceTime,
-      x: rat.position.x,
-      z: rat.position.z,
-      yaw
-    });
+  raceTime += dt;
+  if (++tick % RECORD_EVERY === 0) recordFrame();
+  for (let i; (i = touchedCheese()) !== -1;) {
+    removeCheese(i);
+    collected++;
+    markSplit(raceTime);
+    if (collected >= total) setGateOpen(true);
   }
-
-  if (ghostOn && started)
-    tickGhost(raceTime);
-
-  animateCheeses(FIXED_DT);
-
-  _soloAcc -= FIXED_DT;
+  if (collected >= total && atGate()) finish();
 }
 
-tickBot(dt, started);
-updateCamera(rat.position);
+function place(mesh, frames, t) {
+  mesh.visible = sampleRun(frames, t, sample);
+  if (mesh.visible) { mesh.position.set(sample.x, 0, sample.z); mesh.rotation.y = sample.yaw; }
+}
 
-  // Collect cheese — larger hitbox + check previous position for high-speed tunneling
-  for (let i = cheeses.length-1; i>=0; i--) {
-    const cp = cheeses[i].position;
-    const distNow = cp.distanceTo(rat.position);
-    const distPrev = cp.distanceTo(lastRat);
-    // Check current frame AND interpolate between last and current position
-    if (distNow < 2.2 || distPrev < 2.2) {
-      scene.remove(cheeses[i]); cheeses.splice(i,1);
-      onCheeseCollected(collected, raceTime);
-      collected++;
-    }
-  }
+function frame() {
+  if (ghostOn && ghost && started && !finished) place(ghostMesh, ghost.frames, raceTime);
+  else ghostMesh.visible = false;
+  if (bot) place(botMesh, bot.frames, raceTime);
+  else botMesh.visible = false;
 
-  // Gate
-  const gateOpen = total>0 && collected>=total;
-  if (finishGate) {
-    finishGate.rotation.z += dt*1.2;
-    finishGate.material.color.set(gateOpen ? 0x33ff88 : 0xff5555);
-    finishGate.material.emissive.set(gateOpen ? 0x0a5530 : 0x551414);
-  }
-  const nearGate = rat.position.distanceTo(finishPos) < 2.4;
-  document.getElementById('gatehint').style.display = (nearGate&&!gateOpen&&!finished)?'block':'none';
+  show('gatehint', collected < total && !finished && atGate());
+  updateHud();
+}
 
-  if (!finished && nearGate && gateOpen) {
-    finished = true;
-    ghostRat.visible = false;
-    onFinish(raceTime);
-    document.getElementById('gatehint').style.display = 'none';
-    if (ghostOn && currentRun.length>0 && (ghostBestTime===null||raceTime<ghostBestTime)) {
-      ghostBestTime = raceTime; ghostRecording = currentRun.slice();
-      saveGhost(levelKey, ghostBestTime, ghostRecording);
-    }
-    updateGhostHud();
-    const L   = SOLO_LEVELS[levelKey];
-    const beat = raceTime <= L.par;
-    const newBest = ghostBestTime!==null && raceTime===ghostBestTime;
-    document.getElementById('winMsg').innerHTML =
-      `🏁 Finished!<br><span style="font-size:15px">${L.label} &nbsp;·&nbsp; Time: ${raceTime.toFixed(2)}s &nbsp;·&nbsp; Par: ${L.par}s<br>`+
-      (newBest?'NEW BEST TIME!! Ghost updated. ':'')+
-      (beat?'You beat the par time!':'⏱ Just over par — try again!')+'</span>';
-    const nameInput = document.getElementById('nameInput');
-    nameInput.value = myName||''; nameInput.disabled = false;
-    document.getElementById('saveBtn').disabled = false;
-    document.getElementById('saveMsg').textContent = '';
-    document.getElementById('win').style.display = 'block';
-  }
+// ── Entry points ─────────────────────────────────────────────
+export function startSolo(gameScreen) {
+  initEngine(gameScreen);
+  if (!built) { built = true; bindOnce(); }
+  active = true;
+  document.body.classList.add('solo');
+  show('info', true);
+  show('mpHud', false);
+  buildControls();
+  setSplitsVisible(splitsOn);
+  setLevel(levelKey);
+  startLoop(fixedStep, frame);
+}
 
-  updateHUD();
-  if (minimapOn) drawMinimap(rat.position, yaw, null);
-  updateLighting(dt, rat.position);
-  orbitControls.update();
-  renderer.render(scene, camera);
+/** Hide everything solo-specific so another mode can use the scene. */
+export function stopSolo() {
+  if (!built) return;
+  active = false;
+  document.body.classList.remove('solo', 'menu-open');
+  ghostMesh.visible = botMesh.visible = false;
+  for (const id of ['info', 'win', 'board', 'gatehint']) show(id, false);
+  setSplitsVisible(false);
+  $('controls').innerHTML = '';
 }
