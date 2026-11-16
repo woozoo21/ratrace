@@ -352,6 +352,22 @@ function updateCamera(dt, yaw) {
   orbit.update();
 }
 
+let director = null;
+/**
+ * Hand the camera to `fn(dt, view, yaw, camera)` each frame (home-screen reel); null gives it back
+ * to the follow / orbit camera.
+ */
+export function setCameraDirector(fn) {
+  director = fn;
+  orbit.enabled = !fn;
+  if (!fn) {
+    camera.clearViewOffset();
+    camera.fov = 60;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  }
+}
+
 /** Offset from the rat to the camera right now (for "save camera"). */
 export const currentCamOffset = () => new THREE.Vector3().subVectors(camera.position, orbit.target);
 
@@ -429,7 +445,8 @@ export function startLoop(fixed, frame) {
     gate.rotation.z += dt * 1.2;
 
     frame(dt);
-    updateCamera(dt, yaw);
+    if (director) director(dt, view, yaw, camera);
+    else updateCamera(dt, yaw);
     followLights();
     if (settings.minimap) drawMinimap();
     renderer.render(scene, camera);

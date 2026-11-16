@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Rat Race</title>
 <style>
@@ -13,15 +14,128 @@
 
   /* ── Screens ── */
   .screen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; }
-  #startScreen { gap:28px; background:rgba(0,0,0,0.62); backdrop-filter:blur(2px); }
-  #startScreen h1 { font-size:clamp(34px,9vw,58px); color:#2de0c0; letter-spacing:8px; text-shadow:0 0 40px #2de0c066, 0 2px 0 #000; }
-  .startBtns { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
-  .startBtn { background:rgba(0,0,0,0.55); border:1px solid rgba(45,224,192,0.4); color:#2de0c0; font-size:17px;
-    padding:22px 38px; border-radius:4px; transition:all 0.25s; display:flex; flex-direction:column; align-items:center;
-    gap:10px; backdrop-filter:blur(8px); }
-  .startBtn:hover { background:rgba(45,224,192,0.1); border-color:#2de0c0; transform:translateY(-3px); box-shadow:0 8px 32px #2de0c022; }
-  .startBtn span { font-size:36px; }
-  .startBtn small { font-size:11px; color:#888; letter-spacing:1px; text-transform:uppercase; }
+  /* ── Home menu: left rail over the live scene ── */
+  #startScreen { align-items:stretch; justify-content:flex-start; color:#fff;
+    font-family:'Barlow Condensed','Arial Narrow','Helvetica Neue',Arial,sans-serif;
+    --ease:cubic-bezier(.2,.8,.2,1); --teal:#2de0c0; --pad:clamp(20px,4vw,48px); --railTop:clamp(84px,21vh,190px); }
+  #startScreen button { font-family:inherit; }
+  .hm-scrim { position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(90deg,rgba(4,6,8,.88) 0%,rgba(4,6,8,.62) 24%,rgba(4,6,8,0) 58%),
+               linear-gradient(0deg,rgba(4,6,8,.6) 0%,rgba(4,6,8,0) 22%,rgba(4,6,8,0) 80%,rgba(4,6,8,.5) 100%); }
+  .hm-top { position:absolute; top:0; left:0; right:0; display:flex; justify-content:flex-end; align-items:flex-start; gap:12px; padding:18px var(--pad); }
+  .hm-title em { font-style:inherit; color:var(--teal); }
+  .hm-logo { width:30px; height:auto; flex:none; color:#fff; }
+  .hm-meta { display:flex; flex-direction:column; align-items:flex-end; gap:7px; min-width:0; }
+  .hm-chip { display:flex; align-items:center; height:30px; padding:0 12px; border-radius:15px; background:rgba(10,12,16,.6); color:#cfd6d4;
+    -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,.1); font-size:14px; font-weight:600;
+    letter-spacing:1.5px; text-transform:uppercase; white-space:nowrap; }
+  .hm-toprun { padding-right:12px; font-size:12px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:#aeb8b6; white-space:nowrap;
+    text-shadow:0 1px 8px rgba(0,0,0,.7); animation:hmFade .5s ease-out; }
+  .hm-toprun b { margin-left:6px; font-size:14px; font-weight:700; letter-spacing:1.5px; color:#fff; }
+  @keyframes hmFade { from { opacity:0; } }
+
+  .hm-rail { position:absolute; left:0; top:var(--railTop); width:min(430px,100%); padding:0 var(--pad); }
+  .hm-eyebrow { display:flex; align-items:center; gap:9px; font-size:13px; font-weight:600; letter-spacing:4px; text-transform:uppercase; color:#aeb8b6; }
+  .hm-eyebrow::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--teal); box-shadow:0 0 10px var(--teal); }
+  .hm-title { font-size:clamp(46px,7vw,72px); line-height:1; font-weight:800; font-style:italic; letter-spacing:1px; margin:6px 0 20px;
+    text-shadow:0 2px 24px rgba(0,0,0,.5); white-space:nowrap; }
+  .hm-list { position:relative; display:flex; flex-direction:column; }
+  /* One bar for the whole list: it slides to whichever row is selected. */
+  .hm-bar { position:absolute; left:calc(-1 * var(--pad)); top:0; width:calc(100% + var(--pad) + 30px); height:44px; pointer-events:none; opacity:0;
+    background:linear-gradient(90deg,var(--teal) 0%,#6ff0cf 52%,rgba(159,255,238,0) 100%);
+    transition:transform .26s var(--ease), height .26s var(--ease), opacity .2s; will-change:transform; }
+  .hm-bar::after { content:''; position:absolute; right:4px; top:50%; width:8px; height:8px; border-top:2px solid var(--teal); border-right:2px solid var(--teal);
+    transform:translateY(-50%) rotate(45deg); }
+  .hm-item { position:relative; display:flex; align-items:center; gap:14px; width:100%; height:44px; padding:0; background:none; border:0; outline:none;
+    color:rgba(255,255,255,.72); font-size:23px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; text-align:left; white-space:nowrap;
+    transition:color .2s, padding-left .26s var(--ease);
+    }
+  #startScreen.ready .hm-item { animation:hmIn .55s var(--ease) backwards; animation-delay:calc(var(--i,0) * 60ms + 250ms); }
+  .hm-item.sel { color:#04110e; padding-left:8px; }
+  .hm-item small { font-size:14px; font-weight:600; letter-spacing:1px; opacity:.75; font-variant-numeric:tabular-nums; }
+  .hm-sub { display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s var(--ease); }
+  .hm-sub.open { grid-template-rows:1fr; }
+  .hm-sub > div { overflow:hidden; min-height:0; visibility:hidden; transition:visibility 0s .3s; }
+  .hm-sub.open > div { visibility:visible; transition-delay:0s; }
+  .hm-subitem { height:36px; font-size:18px; padding-left:22px; }
+  #startScreen.ready .hm-subitem { animation:none; }
+  .hm-subitem.sel { padding-left:30px; }
+  @keyframes hmIn { from { opacity:0; transform:translateX(-16px); } }
+
+  .hm-panel { position:absolute; left:min(450px,100%); top:var(--railTop); width:min(380px,calc(100vw - 32px)); padding:20px 24px 22px;
+    background:rgba(10,12,16,.72); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,.09);
+    border-left:3px solid var(--teal); opacity:0; transform:translateX(-14px); visibility:hidden;
+    transition:opacity .25s, transform .3s var(--ease), visibility 0s .3s; }
+  .hm-panel.open { opacity:1; transform:none; visibility:visible; transition-delay:0s; }
+  .hm-panel section { display:none; }
+  .hm-panel section.on { display:block; }
+  .hm-panel h3 { font-size:22px; font-style:italic; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:12px; }
+  .hm-panel h4 { font-size:13px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:var(--teal); margin:14px 0 6px; }
+  .hm-panel p, .hm-panel li { font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:14px; line-height:1.6; color:#cfd6d4; }
+  .hm-panel ul { list-style:none; }
+  .hm-panel kbd { display:inline-block; min-width:22px; padding:0 5px; margin-right:2px; font-family:monospace; font-size:12px; line-height:19px; text-align:center;
+    color:#fff; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); border-bottom-width:2px; border-radius:4px; }
+  .hm-toggle { display:flex; justify-content:space-between; align-items:center; width:100%; height:44px; padding:0; background:none; border:0;
+    border-bottom:1px solid rgba(255,255,255,.08); color:rgba(255,255,255,.8); font-size:18px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+    transition:color .2s; }
+  .hm-toggle:hover { color:#fff; }
+  .hm-toggle:focus-visible, .hm-close:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+  .hm-switch { position:relative; width:38px; height:20px; border-radius:10px; background:rgba(255,255,255,.18); transition:background .22s; }
+  .hm-switch::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .24s var(--ease); }
+  .hm-toggle[aria-pressed="true"] .hm-switch { background:var(--teal); }
+  .hm-toggle[aria-pressed="true"] .hm-switch::after { transform:translateX(18px); }
+  .hm-close { position:absolute; top:14px; right:14px; width:28px; height:28px; background:none; border:0; color:#aeb8b6; font-size:22px; line-height:1;
+    transition:color .2s, transform .24s var(--ease); }
+  .hm-close:hover { color:#fff; transform:rotate(90deg); }
+
+  .hm-foot { position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; padding:20px var(--pad);
+    pointer-events:none; text-transform:uppercase; }
+  #hmDesc { font-size:16px; font-weight:600; letter-spacing:1.5px; color:#d5dcda; min-height:20px; }
+  .hm-hint { font-size:12px; font-weight:600; letter-spacing:2px; color:#8b9593; white-space:nowrap; }
+
+  .hm-ticks { display:flex; justify-content:flex-end; gap:5px; margin-bottom:9px; }
+  .hm-ticks span { position:relative; width:22px; height:2px; background:rgba(255,255,255,.22); overflow:hidden; }
+  .hm-ticks span.done { background:rgba(255,255,255,.6); }
+  .hm-ticks span.on::after { content:''; position:absolute; inset:0; background:var(--teal); transform-origin:left; transform:scaleX(var(--p,0)); }
+  .hm-cut { position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; }
+  /* First load: cover the scene until the models are in and the bot has its route. */
+  .hm-cover { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:#050708;
+    transition:opacity .7s ease, visibility 0s .7s; }
+  .hm-cover.done { opacity:0; visibility:hidden; }
+  .hm-cover-brand { display:flex; align-items:center; gap:18px; font-size:64px; line-height:1; font-weight:800; font-style:italic; letter-spacing:4px; }
+  .hm-cover .hm-logo { width:66px; }
+  .hm-load { width:180px; height:2px; background:rgba(255,255,255,.12); }
+  .hm-load b { display:block; width:0; height:100%; background:var(--teal); transition:width .3s ease-out; }
+
+  /* While the menu is up the game HUD is not. */
+  body.home #minimap, body.home #bottomBar, body.home #backBtn, body.home .tower, body.home #centerHud, body.home #win,
+  body.home #gatehint, body.home #loading, body.home #joyBase { display:none !important; }
+  body.home #board { z-index:120; }
+
+  @media (max-width:700px) {
+    .hm-scrim { background:linear-gradient(0deg,rgba(4,6,8,.94) 0%,rgba(4,6,8,.72) 42%,rgba(4,6,8,0) 72%),
+                           linear-gradient(180deg,rgba(4,6,8,.5) 0%,rgba(4,6,8,0) 18%); }
+    .hm-rail { top:auto; bottom:86px; width:100%; }
+    #hmDesc { font-size:14px; }
+    .hm-title { margin-bottom:10px; }
+    .hm-item { height:40px; font-size:20px; }
+    .hm-subitem { height:34px; font-size:17px; }
+    .hm-panel { left:16px; top:64px; }
+  }
+  @media (pointer:coarse), (max-width:700px) { .hm-hint { display:none; } }
+  @media (prefers-reduced-motion:reduce) {
+    #startScreen.ready .hm-item { animation:none; }
+    .hm-cut { display:none; }
+    .hm-bar, .hm-item, .hm-sub, .hm-panel { transition-duration:.01s; }
+  }
+
+  /* Same curve and focus ring on the other screens' buttons */
+  .mpBox button, .ghostBtn, #startGameBtn, #mpLevelSelect button, #nameModal button {
+    transition:background .22s, border-color .22s, color .22s, transform .22s cubic-bezier(.2,.8,.2,1); }
+  .mpBox button:hover, #startGameBtn:hover, #nameModalBtn:hover { transform:translateY(-1px); }
+  .mpBox button:active, #startGameBtn:active, #nameModalBtn:active { transform:translateY(0) scale(.985); }
+  .mpBox button:focus-visible, .ghostBtn:focus-visible, #startGameBtn:focus-visible, #mpLevelSelect button:focus-visible,
+  #nameModal button:focus-visible { outline:2px solid #2de0c0; outline-offset:2px; }
 
   #mpScreen, #lobbyScreen { gap:20px; background:radial-gradient(ellipse at center,#1a1a2a 0%,#0a0a0a 100%); overflow-y:auto; padding:16px; }
   #mpScreen h2 { font-size:36px; color:#9fe; text-shadow:0 0 20px #9fe8; }
@@ -215,24 +329,93 @@
 <body>
 
 <div id="startScreen" class="screen">
-  <h1>RAT RACE</h1>
-  <div class="startBtns">
-    <button class="startBtn" id="btnSolo"><span>🧀</span>Daily Solo<small>Compete on the daily maze</small></button>
-    <button class="startBtn" id="btnMulti"><span>👥</span>Multiplayer<small>Race friends in real time</small></button>
+  <div class="hm-cut" id="hmCut"></div>
+  <div class="hm-scrim"></div>
+  <header class="hm-top">
+    <div class="hm-meta">
+      <span class="hm-chip" id="hmDate"></span>
+      <span class="hm-toprun" id="hmTop" hidden>Top run today <b id="hmTopName"></b></span>
+    </div>
+  </header>
+
+  <nav class="hm-rail" aria-label="Main menu">
+    <div class="hm-eyebrow">Main menu</div>
+    <h1 class="hm-title">RAT <em>RACE</em></h1>
+    <div class="hm-list" id="hmList">
+      <div class="hm-bar" id="hmBar"></div>
+      <button class="hm-item" style="--i:0" data-act="solo" aria-expanded="false" data-desc="Today's maze. Same for everyone, new every day">Daily Solo</button>
+      <div class="hm-sub" id="hmLevels"><div>
+        <button class="hm-item hm-subitem" data-act="level" data-lvl="easy" data-desc="7 cheeses. A quick warm up">Easy<small></small></button>
+        <button class="hm-item hm-subitem" data-act="level" data-lvl="medium" data-desc="14 cheeses. Plan your route">Medium<small></small></button>
+        <button class="hm-item hm-subitem" data-act="level" data-lvl="hard" data-desc="14 cheeses spread to every corner">Hard<small></small></button>
+      </div></div>
+      <button class="hm-item" style="--i:1" data-act="multi" data-desc="Race friends in real time. Best of 3">Multiplayer</button>
+      <button class="hm-item" style="--i:2" data-act="board" data-desc="Today's fastest rats, and this week's podiums">Leaderboard</button>
+      <button class="hm-item" style="--i:3" data-act="how" data-desc="Controls and rules">How to play</button>
+      <button class="hm-item" style="--i:4" data-act="settings" data-desc="Night mode, minimap, ghost, sectors">Settings</button>
+    </div>
+  </nav>
+
+  <aside class="hm-panel" id="hmPanel">
+    <button class="hm-close" id="hmPanelClose" aria-label="Close">×</button>
+    <section data-panel="how">
+      <h3>How to play</h3>
+      <p>Collect every cheese to open the gate, then run through the ring. Fastest time wins.</p>
+      <h4>Keyboard</h4>
+      <ul>
+        <li><kbd>W</kbd><kbd>S</kbd> go and reverse &nbsp; <kbd>A</kbd><kbd>D</kbd> steer</li>
+        <li>Drag to look around, scroll to zoom</li>
+      </ul>
+      <h4>Touch</h4>
+      <ul>
+        <li>Left thumb: joystick. Push to go, pull down to reverse</li>
+        <li>Right side: drag to look around</li>
+      </ul>
+      <h4>Racing</h4>
+      <ul>
+        <li>Your best run comes back as a ghost to beat</li>
+        <li>Sectors turn green for a personal best, purple for the day's best</li>
+      </ul>
+    </section>
+    <section data-panel="settings">
+      <h3>Settings</h3>
+      <button class="hm-toggle" data-set="night">Night mode<span class="hm-switch"></span></button>
+      <button class="hm-toggle" data-set="minimap">Minimap<span class="hm-switch"></span></button>
+      <button class="hm-toggle" data-set="ghost">Ghost<span class="hm-switch"></span></button>
+      <button class="hm-toggle" data-set="splits">Sector times<span class="hm-switch"></span></button>
+    </section>
+  </aside>
+
+  <footer class="hm-foot">
+    <div id="hmDesc"></div>
+    <div>
+      <div class="hm-ticks" id="hmTicks"></div>
+      <div class="hm-hint">↑ ↓ Select &nbsp;·&nbsp; Enter Confirm</div>
+    </div>
+  </footer>
+
+  <div class="hm-cover" id="hmCover">
+    <div class="hm-cover-brand"><svg class="hm-logo" viewBox="0 0 28 30" aria-hidden="true">
+      <circle cx="5" cy="6" r="5" fill="currentColor"/><circle cx="23" cy="6" r="5" fill="currentColor"/>
+      <path d="M5.5 11.5Q14 6.5 22.5 11.5L15.3 27.5Q14 29.2 12.7 27.5Z" fill="currentColor"/>
+      <circle cx="10.4" cy="15.2" r="1.5" fill="#04110e"/><circle cx="17.6" cy="15.2" r="1.5" fill="#04110e"/>
+      <circle cx="14" cy="26.2" r="2.1" fill="#2de0c0"/>
+    </svg><span>RACE</span></div>
+    <div class="hm-load"><b id="hmLoad"></b></div>
   </div>
 </div>
 
 <div id="mpScreen" class="screen">
   <h2>Multiplayer</h2>
   <div class="mpRules">
-    Best of 3 rounds — fastest rat scores most<br>
+    Best of 3 rounds. Fastest rat scores most<br>
     One cheese is hidden off the main route<br>
     Grab it to slow everyone else (and bank bonus points)
   </div>
   <div class="mpBox">
     <label>Create a new room</label>
     <button id="btnCreateRoom">Create Room</button>
-    <div class="mpOrDiv">— or —</div>
+    <div class="mpOrDiv">or</div>
     <label for="roomCodeInput">Join with room code</label>
     <input id="roomCodeInput" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters">
     <button id="btnJoinRoom">Join Room</button>
@@ -325,13 +508,20 @@
   </div>
 </div>
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&display=swap">
+
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-import { startSolo, stopSolo, initSoloFirebase } from './solo.js';
+import { startSolo, stopSolo, initSoloFirebase, openBoard, soloPrefs, topRunToday } from './solo.js';
+import { startHome, stopHome, SHOT_COUNT } from './menu.js';
+import { settings, setNight, setMinimap } from './engine.js';
+import { dateSeed } from './core.js';
 import { createRoom, joinRoom, leaveRoom, setLobbyHandlers, setRoomLevel, startMatch, initMultiFirebase } from './multi.js';
 
 const fbApp = initializeApp({
@@ -350,16 +540,151 @@ initMultiFirebase(fbApp);
 const $ = (id) => document.getElementById(id);
 const screens = { start: $('startScreen'), mp: $('mpScreen'), lobby: $('lobbyScreen'), game: $('gameScreen') };
 function showScreen(name) {
-  for (const [key, el] of Object.entries(screens)) el.style.display = key !== name ? 'none' : key === 'game' ? 'block' : 'flex';
+  const home = name === 'start';                           // the menu sits on top of the live scene
+  for (const [key, el] of Object.entries(screens)) {
+    const on = key === name || (home && key === 'game');
+    el.style.display = !on ? 'none' : key === 'game' ? 'block' : 'flex';
+  }
   document.body.classList.remove('menu-open');
+  document.body.classList.toggle('home', home);
+  if (home) { stopSolo(); startHome(screens.game, reelHooks); refreshHome(); }
+  else stopHome();
 }
 window.showScreen = showScreen;
 
-const playSolo = () => { showScreen('game'); startSolo(screens.game); };
-playSolo();
+const playSolo = (level) => { showScreen('game'); startSolo(screens.game, level); };
+window.playSolo = playSolo;
 
-$('btnSolo').onclick    = playSolo;
-$('btnMulti').onclick   = () => { $('mpError').textContent = ''; showScreen('mp'); };
+// ── Home menu ──
+const ticks = Array.from({ length: SHOT_COUNT }, () => $('hmTicks').appendChild(document.createElement('span')));
+const reelHooks = {
+  progress(p) { $('hmLoad').style.width = Math.round(p * 100) + '%'; },
+  ready() { $('hmLoad').style.width = '100%'; $('hmCover').classList.add('done'); screens.start.classList.add('ready'); },
+  cut(i) {                                                 // each shot comes up out of black
+    $('hmCut').animate([{ opacity: 1 }, { opacity: 0 }], { duration: 480, easing: 'ease-out' });
+    ticks.forEach((el, k) => { el.classList.toggle('on', k === i); el.classList.toggle('done', k < i); });
+  },
+  shot(i, u) { ticks[i].style.setProperty('--p', u.toFixed(3)); },
+};
+const hmList = $('hmList'), hmBar = $('hmBar'), hmDesc = $('hmDesc'), hmPanel = $('hmPanel'), hmLevels = $('hmLevels');
+const soloItem = hmList.querySelector('[data-act="solo"]');
+let sel = null;
+
+/** Rows you can currently move to (level rows only while Daily Solo is open). */
+const menuItems = () => [...hmList.querySelectorAll('.hm-item')]
+  .filter((b) => !b.classList.contains('hm-subitem') || hmLevels.classList.contains('open'));
+
+function placeBar() {
+  if (!sel) return;
+  hmBar.style.opacity = 1;
+  hmBar.style.height = sel.offsetHeight + 'px';
+  hmBar.style.transform = `translateY(${sel.offsetTop}px)`;
+}
+new ResizeObserver(placeBar).observe(hmList);              // rows move while the level list opens
+
+function select(el, focus = false) {
+  if (!el) return;
+  if (sel !== el) {
+    sel?.classList.remove('sel');
+    sel = el;
+    el.classList.add('sel');
+    placeBar();
+    hmDesc.textContent = el.dataset.desc || '';
+    hmDesc.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' });
+  }
+  if (focus) el.focus({ preventScroll: true });
+}
+
+function setLevelsOpen(open) {
+  hmLevels.classList.toggle('open', open);
+  soloItem.setAttribute('aria-expanded', open);
+  if (!open && sel?.classList.contains('hm-subitem')) select(soloItem, document.activeElement === sel);
+}
+
+function openPanel(name) {
+  const same = hmPanel.classList.contains('open') && hmPanel.querySelector('section.on')?.dataset.panel === name;
+  if (same) { hmPanel.classList.remove('open'); return; }
+  hmPanel.querySelectorAll('section').forEach((sec) => sec.classList.toggle('on', sec.dataset.panel === name));
+  hmPanel.classList.add('open');
+}
+const closePanel = () => hmPanel.classList.remove('open');
+$('hmPanelClose').onclick = closePanel;
+
+const HOME_ACTIONS = {
+  solo(b, byKey) {
+    closePanel();
+    const open = !hmLevels.classList.contains('open');
+    setLevelsOpen(open);
+    if (open && byKey) select(hmLevels.querySelector('.hm-item'), true);
+  },
+  level(b)   { playSolo(b.dataset.lvl); },
+  multi()    { closePanel(); $('mpError').textContent = ''; showScreen('mp'); },
+  board()    { closePanel(); openBoard(); },
+  how()      { openPanel('how'); },
+  settings() { openPanel('settings'); },
+};
+hmList.addEventListener('click', (e) => {
+  const b = e.target.closest('.hm-item');
+  if (!b) return;
+  select(b);
+  HOME_ACTIONS[b.dataset.act](b, e.detail === 0);          // detail 0 = activated from the keyboard
+});
+hmList.addEventListener('pointerover', (e) => { if (e.pointerType === 'mouse') select(e.target.closest('.hm-item')); });
+hmList.addEventListener('focusin', (e) => select(e.target.closest('.hm-item')));
+
+window.addEventListener('keydown', (e) => {
+  if (!document.body.classList.contains('home') || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  const boardOpen = $('board').style.display === 'block';
+  if (e.key === 'Escape') {
+    if (boardOpen) $('boardClose').click();
+    else if (hmPanel.classList.contains('open')) closePanel();
+    else setLevelsOpen(false);
+    return;
+  }
+  if (boardOpen) return;
+  const rows = menuItems(), i = rows.indexOf(sel);
+  if (e.key === 'ArrowDown') select(rows[(i + 1) % rows.length], true);
+  else if (e.key === 'ArrowUp') select(rows[(i - 1 + rows.length) % rows.length], true);
+  else if (e.key === 'ArrowRight' && sel === soloItem) { setLevelsOpen(true); select(hmLevels.querySelector('.hm-item'), true); }
+  else if (e.key === 'ArrowLeft' && sel?.classList.contains('hm-subitem')) { select(soloItem, true); setLevelsOpen(false); }
+  else if (e.key === 'Enter' && document.activeElement.tagName !== 'BUTTON') sel?.click();
+});
+
+const SETTINGS = {
+  night:   [() => settings.night,   (v) => setNight(v)],
+  minimap: [() => settings.minimap, (v) => setMinimap(v)],
+  ghost:   [() => soloPrefs.ghost,  (v) => { soloPrefs.ghost = v; }],
+  splits:  [() => soloPrefs.splits, (v) => { soloPrefs.splits = v; }],
+};
+const toggles = [...hmPanel.querySelectorAll('.hm-toggle')];
+toggles.forEach((b) => {
+  b.onclick = () => {
+    const [get, set] = SETTINGS[b.dataset.set];
+    set(!get());
+    b.setAttribute('aria-pressed', get());
+  };
+});
+
+/** Bring the menu up to date each time it is shown: today's top run, your bests, switches. */
+function refreshHome() {
+  topRunToday().then((top) => {
+    $('hmTop').hidden = !top;
+    if (top) $('hmTopName').textContent = top.name;
+  }).catch(() => {});
+  $('hmDate').textContent = 'Daily · ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  for (const b of hmLevels.querySelectorAll('.hm-item')) {
+    let best = null;
+    try { best = JSON.parse(localStorage.getItem(`ratrace_ghost_v2_${dateSeed()}_${b.dataset.lvl}`)); } catch { /* no best yet */ }
+    b.querySelector('small').textContent = best && best.time ? `Best ${best.time.toFixed(2)}` : '';
+  }
+  toggles.forEach((b) => b.setAttribute('aria-pressed', SETTINGS[b.dataset.set][0]()));
+  closePanel();
+  select(menuItems().includes(sel) ? sel : soloItem);
+  placeBar();
+}
+
+showScreen('start');
+
 $('mpBack').onclick     = () => showScreen('start');
 $('backBtn').onclick    = () => { leaveRoom(); showScreen('start'); };
 $('lobbyBack').onclick  = () => { leaveRoom(); showScreen('start'); };

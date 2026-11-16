@@ -110,7 +110,7 @@ function updateSideHud() {
   if (rival) {
     const gap = gapTo(rival);
     $('qGapName').textContent = rivalName;
-    $('qGapVal').textContent = gap === null ? '—' : (gap <= 0 ? '−' : '+') + Math.abs(gap).toFixed(3);
+    $('qGapVal').textContent = gap === null ? '' : (gap <= 0 ? '−' : '+') + Math.abs(gap).toFixed(3);
     $('qGapVal').className = gap === null ? '' : gap <= 0 ? 'ahead' : 'behind';
   }
 }
@@ -200,7 +200,7 @@ function finish() {
   let rows = line('Par', par, 's');
   if (bot) rows += line('Bot', bot.time);
   if (rivalRun) rows += line(rivalRun.name || 'Your best', rivalRun.time);
-  if (newBest) rows += '<div class="cmp note">New best time — ghost updated</div>';
+  if (newBest) rows += '<div class="cmp note">New best time. Ghost updated</div>';
   $('winTime').textContent = raceTime.toFixed(2);
   $('winRows').innerHTML = rows;
   $('nameInput').value = localStorage.getItem(NAME_KEY) || '';
@@ -254,7 +254,7 @@ async function saveScore() {
     if (name !== localStorage.getItem(NAME_KEY)) {
       say('Checking name…');
       if ((await getDoc(doc(db, 'scores', scoreId(lvl, name)))).exists()) {
-        say('❌ Name already taken today — choose another.');
+        say('❌ Name already taken today. Choose another.');
         $('saveBtn').disabled = false;
         return;
       }
@@ -267,7 +267,7 @@ async function saveScore() {
                            : 'Your earlier time today is still your best.');
   } catch (e) {
     console.error(e);
-    say('❌ Could not save — check your connection.');
+    say('❌ Could not save. Check your connection.');
     $('saveBtn').disabled = false;
   }
 }
@@ -287,13 +287,14 @@ async function renderBoard(view) {
 function renderDaily(list, lvl, rows) {
   const label = LEVELS[lvl].label;
   if (!rows.length) { list.innerHTML = `<p>No times yet for <b>${label}</b> today. Be the first!</p>`; return; }
-  list.innerHTML = `<p style="color:#9fe">${label} — today's top 10</p><ol>` + rows.map((s, i) =>
-    `<li>${escapeHtml(s.name)} — ${s.time.toFixed(2)}s <button class="racebtn" data-i="${i}">Ghost Race</button></li>`
+  list.innerHTML = `<p style="color:#9fe">${label}: today's top 10</p><ol>` + rows.map((s, i) =>
+    `<li>${escapeHtml(s.name)} <span style="color:#2de0c0">${s.time.toFixed(2)}s</span> <button class="racebtn" data-i="${i}">Ghost Race</button></li>`
   ).join('') + '</ol>';
   list.querySelectorAll('.racebtn').forEach((btn) => {
     btn.onclick = () => {
       const s = rows[btn.dataset.i];
-      if (lvl !== levelKey) setLevel(lvl);
+      if (!active) window.playSolo(lvl);                    // opened from the home menu
+      else if (lvl !== levelKey) setLevel(lvl);
       ghost = { name: s.name, time: s.time, frames: s.frames || [], splits: s.splits || [] };
       ghostOn = true;
       notice = `Racing ${s.name}'s ghost`;
@@ -315,7 +316,7 @@ async function weeklyHtml() {
     } catch (e) { console.error(e); }
     return { name: d.toLocaleDateString(undefined, { weekday: 'short' }), today: seed === TODAY, rows };
   }));
-  let html = '<p style="color:#9fe;margin-bottom:10px">This week — top 3 each day</p><table class="weekTable"><tr><td></td>';
+  let html = '<p style="color:#9fe;margin-bottom:10px">This week: top 3 each day</p><table class="weekTable"><tr><td></td>';
   for (const d of days) html += `<th style="color:${d.today ? '#2de0c0' : '#9fe'}">${d.name}</th>`;
   html += '</tr>';
   ['🥇', '🥈', '🥉'].forEach((medal, rank) => {
@@ -323,7 +324,7 @@ async function weeklyHtml() {
     for (const d of days) {
       const e = d.rows[rank];
       html += '<td>' + (e ? `${escapeHtml(e.name)}<br><span style="color:#2de0c0;font-size:11px">${e.time.toFixed(2)}s</span>`
-                          : '<span style="color:#555">—</span>') + '</td>';
+                          : '<span style="color:#555">·</span>') + '</td>';
     }
     html += '</tr>';
   });
@@ -454,7 +455,29 @@ function frame() {
 }
 
 // ── Entry points ─────────────────────────────────────────────
-export function startSolo(gameScreen) {
+/** Settings the home menu can change before a run starts. */
+export const soloPrefs = {
+  get ghost() { return ghostOn; },   set ghost(v) { ghostOn = !!v; },
+  get splits() { return splitsOn; }, set splits(v) { splitsOn = !!v; },
+};
+
+/** Today's fastest run for the home screen: { name, time, level } from the first level with a time, or null. */
+export async function topRunToday() {
+  for (const lvl of Object.keys(LEVELS)) {
+    const rows = await loadBoard(lvl);
+    if (rows.length) return { name: rows[0].name, time: rows[0].time, level: LEVELS[lvl].label };
+  }
+  return null;
+}
+
+/** Open the leaderboard without a run in progress (home menu). The engine must already be up. */
+export function openBoard(lvl = levelKey) {
+  if (!built) { built = true; bindOnce(); }
+  show('board', true);
+  renderBoard(lvl);
+}
+
+export function startSolo(gameScreen, level = levelKey) {
   initEngine(gameScreen);
   if (!built) { built = true; bindOnce(); }
   active = true;
@@ -464,7 +487,7 @@ export function startSolo(gameScreen) {
   show('mpHud', false);
   buildControls();
   setSplitsVisible(splitsOn);
-  setLevel(levelKey);
+  setLevel(level);
   startLoop(fixedStep, frame);
 }
 

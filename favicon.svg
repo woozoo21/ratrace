@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    .f { fill:#fff; } .e { fill:#07090b; }
+    @media (prefers-color-scheme: light) { .f { fill:#07090b; } .e { fill:#fff; } }
+  </style>
+  <g transform="translate(1 0) scale(2.2)">
+    <circle class="f" cx="5" cy="6" r="5"/><circle class="f" cx="23" cy="6" r="5"/>
+    <path class="f" d="M5.5 11.5Q14 6.5 22.5 11.5L15.3 27.5Q14 29.2 12.7 27.5Z"/>
+    <circle class="e" cx="10.4" cy="15.2" r="1.5"/><circle class="e" cx="17.6" cy="15.2" r="1.5"/>
+    <circle cx="14" cy="26.2" r="2.1" fill="#2de0c0"/>
+  </g>
+</svg>

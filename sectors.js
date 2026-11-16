@@ -47,7 +47,7 @@ export function resetSplits() {
     const row = el(`split-${i}`);
     if (!row) continue;
     row.className = i === 0 ? 'active' : '';
-    row.children[2].textContent = '--.---';
+    row.children[2].textContent = '0.000';
     row.children[3].textContent = '';
   }
   for (let i = 0; i < count; i++) if (el(`seg-${i}`)) el(`seg-${i}`).className = i === 0 ? 'active' : '';
