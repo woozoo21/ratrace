@@ -12,7 +12,7 @@ import {
 } from './core.js';
 import { planBotRun } from './bot.js';
 import {
-  initSplits, resetSplits, markSplit, getRunSplits, setRival, setOverallBest, setSplitsVisible, pruneStorage,
+  initSplits, resetSplits, markSplit, getRunSplits, setReference, setOverallBest, setSplitsVisible,
 } from './sectors.js';
 import {
   getFirestore, doc, getDoc, setDoc, getDocs, collection, query, where, orderBy, limit,
@@ -46,7 +46,7 @@ let ghost = null;             // the run being raced: best, or a leaderboard ent
 let bot = null;               // planned bot run, when the bot is on
 let ghostOn = true, splitsOn = true, botOn = false;
 let ghostMesh = null, botMesh = null;
-let hudText = '', notice = '';
+let hudText = '', cheeseText = '', notice = '';
 let par = 0;                  // seconds; from the bot's run, or the level's fallback until that is planned
 const botPlans = {};          // level → planned run (same maze all day)
 const boards = {};            // level → { at, rows }
@@ -72,28 +72,61 @@ function saveBest(lvl, run) {
 
 // ── HUD ──────────────────────────────────────────────────────
 function updateHud() {
-  const text = `🧀 ${collected}/${total}  |  ⏱ ${raceTime.toFixed(2)}s`;
-  if (text !== hudText) $('hud').textContent = hudText = text;
+  const text = raceTime.toFixed(2);
+  if (text !== hudText) $('timer').textContent = hudText = text;
+  const cheese = `${collected}/${total}`;
+  if (cheese !== cheeseText) $('cheeseCount').textContent = cheeseText = cheese;
 }
 
+/** Seconds behind (+) or ahead (−) of `run` at my last checkpoint, or null before the first one. */
+function gapTo(run) {
+  const mine = getRunSplits();
+  if (!mine.length || !run.splits || run.splits.length !== total + 1) return null;
+  let me = 0, them = 0;
+  for (let i = 0; i < mine.length; i++) { me += mine[i]; them += run.splits[i]; }
+  return me - them;
+}
+
+/** The rows under the sectors: who you are racing and how far apart you are. */
 function updateSideHud() {
-  const lines = [];
-  if (ghostOn) {
-    lines.push(!ghost ? 'Ghost: no best yet'
-      : `Ghost: ${ghost.time.toFixed(2)}s${ghost.name ? ` (${ghost.name})` : ''}`);
+  const row = (name, run) => {
+    const gap = gapTo(run);
+    const cls = gap === null ? '' : gap <= 0 ? 'ahead' : 'behind';
+    const txt = gap === null ? '' : (gap <= 0 ? '−' : '+') + Math.abs(gap).toFixed(2);
+    return `<div class="cmp"><span>${escapeHtml(name)}</span><span>${run.time.toFixed(2)} <b class="${cls}">${txt}</b></span></div>`;
+  };
+  let html = '';
+  if (ghostOn) html += ghost ? row(ghost.name || 'Ghost', ghost) : '<div class="cmp"><span>Ghost</span><span>no best yet</span></div>';
+  if (bot) html += row('Bot', bot);
+  if (notice) html += `<div class="cmp note">${escapeHtml(notice)}</div>`;
+  $('ghosthud').innerHTML = html;
+
+  // Centre box: the one rival that matters right now (the bot if it is on, else the ghost) and the gap to it.
+  const rival = bot || (ghostOn ? ghost : null);
+  const rivalName = bot ? 'Bot' : rival ? (rival.name || 'Ghost') : 'Par';
+  $('qRivalName').textContent = rivalName;
+  $('qRivalTime').textContent = (rival ? rival.time : par).toFixed(2);
+  show('qGap', !!rival, 'flex');
+  if (rival) {
+    const gap = gapTo(rival);
+    $('qGapName').textContent = rivalName;
+    $('qGapVal').textContent = gap === null ? '—' : (gap <= 0 ? '−' : '+') + Math.abs(gap).toFixed(3);
+    $('qGapVal').className = gap === null ? '' : gap <= 0 ? 'ahead' : 'behind';
   }
-  if (bot) lines.push(`🤖 Bot: ${bot.time.toFixed(2)}s`);
-  if (notice) lines.push(notice);
-  $('ghosthud').textContent = lines.join('\n');
-  // The comparison row follows the bot when it is running, otherwise the ghost.
-  if (bot) setRival('🤖', bot.splits);
-  else if (ghostOn && ghost) setRival('👻', ghost.splits);
-  else setRival('', null);
+}
+
+/** Show the sector just completed under the gap (e.g. "S3 1.067 +0.250"). */
+function showLastSector(info) {
+  $('qLast').textContent = info ? `${info.label} ${info.time.toFixed(3)} ${info.delta}` : '';
+  $('qLast').className = info ? `sec-${info.color}` : '';
 }
 
 // ── Race lifecycle ───────────────────────────────────────────
 function showPar() {
-  $('level').textContent = `Level: ${LEVELS[levelKey].label}  ·  Par: ${par}s`;
+  $('level').textContent = `${LEVELS[levelKey].label} · Daily`;
+  $('parLabel').textContent = `Par ${par}s`;
+  $('qLevel').textContent = LEVELS[levelKey].label;
+  updateSideHud();
 }
 
 /** The bot's run for today's maze on this level (planned once, then cached). */
@@ -119,7 +152,7 @@ function setLevel(key) {
   ghost = rival || best;
   bot = botOn ? botPlan(key) : null;                       // the bot stays on across restarts and levels
   if (!rival) notice = '';
-  initSplits(`${TODAY}_${key}`, cheeseCells.length);
+  initSplits(cheeseCells.length);
   show('board', false);
   restart();
   syncButtons();
@@ -134,7 +167,9 @@ function restart() {
   started = false; finished = false;
   recording = [{ t: 0, x: round3(player.x), z: round3(player.z), yaw: round3(player.yaw) }];
   setGateOpen(total === 0);
+  setReference(best ? best.splits : null);                 // sectors are coloured against my best run
   resetSplits();
+  showLastSector(null);
   ghostMesh.visible = false;
   show('win', false);
   updateHud();
@@ -144,8 +179,9 @@ function restart() {
 function finish() {
   finished = true;
   recordFrame();
-  markSplit(raceTime);
+  showLastSector(markSplit(raceTime));
   lastRun = { time: raceTime, frames: recording, splits: getRunSplits() };
+  const rivalRun = ghostOn ? ghost : null;                 // who we were racing, before a new best replaces it
   const newBest = !best || raceTime < best.time;
   if (newBest) {
     const wasOwnGhost = ghost === best;
@@ -155,21 +191,22 @@ function finish() {
   }
   updateSideHud();
 
-  const L = LEVELS[levelKey];
-  const lines = [
-    `${L.label} &nbsp;·&nbsp; Time: ${raceTime.toFixed(2)}s &nbsp;·&nbsp; Par: ${par}s`,
-    (newBest ? 'New best time! Ghost updated. ' : '') +
-      (raceTime <= par ? 'You beat the par time!' : '⏱ Over par — try again!'),
-  ];
-  if (bot) {
-    const gap = raceTime - bot.time;
-    lines.push(gap <= 0 ? `🤖 You beat the bot by ${(-gap).toFixed(2)}s!` : `🤖 The bot was ${gap.toFixed(2)}s faster.`);
-  }
-  $('winMsg').innerHTML = `🏁 Finished!<br><span style="font-size:15px">${lines.join('<br>')}</span>`;
+  // Result card: one line per thing you raced, with the margin.
+  const line = (name, time, unit = '') => {
+    const d = raceTime - time;
+    return `<div class="cmp"><span>${escapeHtml(name)} ${unit ? time + unit : time.toFixed(2)}</span>` +
+           `<b class="${d <= 0 ? 'ahead' : 'behind'}">${Math.abs(d).toFixed(2)} ${d <= 0 ? 'ahead' : 'behind'}</b></div>`;
+  };
+  let rows = line('Par', par, 's');
+  if (bot) rows += line('Bot', bot.time);
+  if (rivalRun) rows += line(rivalRun.name || 'Your best', rivalRun.time);
+  if (newBest) rows += '<div class="cmp note">New best time — ghost updated</div>';
+  $('winTime').textContent = raceTime.toFixed(2);
+  $('winRows').innerHTML = rows;
   $('nameInput').value = localStorage.getItem(NAME_KEY) || '';
   $('saveBtn').disabled = false;
   $('saveMsg').textContent = '';
-  show('win', true);
+  show('win', true, 'flex');
 }
 
 function recordFrame() {
@@ -226,7 +263,7 @@ async function saveScore() {
     $('nameInput').value = name;
     say('Saving…');
     const result = await submitScore(name, run, lvl);
-    say(result === 'saved' ? 'Saved! 🧀  Open the leaderboard to see standings.'
+    say(result === 'saved' ? 'Saved. Open the leaderboard to see standings.'
                            : 'Your earlier time today is still your best.');
   } catch (e) {
     console.error(e);
@@ -279,13 +316,13 @@ async function weeklyHtml() {
     return { name: d.toLocaleDateString(undefined, { weekday: 'short' }), today: seed === TODAY, rows };
   }));
   let html = '<p style="color:#9fe;margin-bottom:10px">This week — top 3 each day</p><table class="weekTable"><tr><td></td>';
-  for (const d of days) html += `<th style="color:${d.today ? '#ffd35a' : '#9fe'}">${d.name}</th>`;
+  for (const d of days) html += `<th style="color:${d.today ? '#2de0c0' : '#9fe'}">${d.name}</th>`;
   html += '</tr>';
   ['🥇', '🥈', '🥉'].forEach((medal, rank) => {
     html += `<tr><td>${medal}</td>`;
     for (const d of days) {
       const e = d.rows[rank];
-      html += '<td>' + (e ? `${escapeHtml(e.name)}<br><span style="color:#ffd35a;font-size:11px">${e.time.toFixed(2)}s</span>`
+      html += '<td>' + (e ? `${escapeHtml(e.name)}<br><span style="color:#2de0c0;font-size:11px">${e.time.toFixed(2)}s</span>`
                           : '<span style="color:#555">—</span>') + '</td>';
     }
     html += '</tr>';
@@ -303,7 +340,7 @@ function toggleBoard() {
 function toggleBot() {
   if (botOn) { botOn = false; bot = null; botMesh.visible = false; restart(); syncButtons(); return; }
   botOn = true;
-  $('btn-bot').textContent = '⏳ Planning…';
+  $('btn-bot').firstChild.textContent = 'Planning…';
   const key = levelKey;
   setTimeout(() => {                                       // let the label paint before the planner runs
     if (key !== levelKey) return;
@@ -316,38 +353,45 @@ function toggleBot() {
 
 // ── Controls ─────────────────────────────────────────────────
 const onOff = (v) => (v ? 'On' : 'Off');
-// [id, key, label(), action]
+// [id, key, label(), action, main] — `main` buttons sit on the bottom bar, the rest behind "More".
 const BUTTONS = [
-  ['easy',    '1', () => 'Easy (1)',    () => setLevel('easy')],
-  ['medium',  '2', () => 'Medium (2)',  () => setLevel('medium')],
-  ['hard',    '3', () => 'Hard (3)',    () => setLevel('hard')],
-  ['board',   'l', () => 'Leaderboard (L)', toggleBoard],
-  ['follow',  'f', () => `Follow Cam (F): ${onOff(settings.followCam)}`, () => { settings.followCam = !settings.followCam; }],
-  ['savecam', '',  () => (settings.camOffset ? '✅ Cam Saved' : 'Save Cam'),
+  ['easy',    '1', () => 'Easy',    () => setLevel('easy'),   true],
+  ['medium',  '2', () => 'Medium',  () => setLevel('medium'), true],
+  ['hard',    '3', () => 'Hard',    () => setLevel('hard'),   true],
+  ['board',   'l', () => 'Leaderboard', toggleBoard, true],
+  ['ghost',   'g', () => `Ghost ${onOff(ghostOn).toLowerCase()}`, () => { ghostOn = !ghostOn; if (!ghostOn) ghostMesh.visible = false; updateSideHud(); }, true],
+  ['bot',     'b', () => `Bot ${onOff(botOn).toLowerCase()}`, toggleBot, true],
+  ['follow',  'f', () => `Follow cam: ${onOff(settings.followCam)}`, () => { settings.followCam = !settings.followCam; }],
+  ['savecam', '',  () => (settings.camOffset ? 'Camera saved' : 'Save camera'),
                    () => { settings.camOffset = settings.camOffset ? null : currentCamOffset(); }],
-  ['ghost',   'g', () => `Ghost (G): ${onOff(ghostOn)}`, () => { ghostOn = !ghostOn; if (!ghostOn) ghostMesh.visible = false; updateSideHud(); }],
-  ['night',   'n', () => `Night (N): ${onOff(settings.night)}`, () => setNight(!settings.night)],
-  ['minimap', 'm', () => `Minimap (M): ${onOff(settings.minimap)}`, () => setMinimap(!settings.minimap)],
-  ['splits',  't', () => `Splits (T): ${onOff(splitsOn)}`, () => { splitsOn = !splitsOn; setSplitsVisible(splitsOn); }],
-  ['bot',     'b', () => (botOn ? '🤖 Stop Bot (B)' : '🤖 Bot Race (B)'), toggleBot],
-  ['menu',    '',  () => '🏠 Menu', () => window.showScreen('start')],
+  ['night',   'n', () => `Night: ${onOff(settings.night)}`, () => setNight(!settings.night)],
+  ['minimap', 'm', () => `Minimap: ${onOff(settings.minimap)}`, () => setMinimap(!settings.minimap)],
+  ['splits',  't', () => `Sectors: ${onOff(splitsOn)}`, () => { splitsOn = !splitsOn; setSplitsVisible(splitsOn); }],
+  ['menu',    '',  () => 'Main menu', () => window.showScreen('start')],
 ];
 
 function syncButtons() {
-  for (const [id, , label] of BUTTONS) {
+  for (const [id, key, label] of BUTTONS) {
     const b = $(`btn-${id}`);
-    if (b) { b.textContent = label(); b.classList.toggle('active', id === levelKey); }
+    if (!b) continue;
+    b.textContent = label();
+    if (key) {                                             // show the hotkey as a key cap on the button
+      const cap = document.createElement('kbd');
+      cap.textContent = key.toUpperCase();
+      b.appendChild(cap);
+      b.setAttribute('aria-keyshortcuts', key.toUpperCase());
+    }
+    b.classList.toggle('active', id === levelKey || (id === 'ghost' && ghostOn) || (id === 'bot' && botOn));
   }
 }
 
 function buildControls() {
-  const ctrl = $('controls');
-  ctrl.innerHTML = '';
-  for (const [id, , , action] of BUTTONS) {
+  $('barMain').innerHTML = $('controls').innerHTML = '';
+  for (const [id, , , action, main] of BUTTONS) {
     const b = document.createElement('button');
     b.id = `btn-${id}`;
     b.onclick = () => { action(); syncButtons(); document.body.classList.remove('menu-open'); b.blur(); };
-    ctrl.appendChild(b);
+    $(main ? 'barMain' : 'controls').appendChild(b);
   }
   syncButtons();
 }
@@ -356,6 +400,7 @@ function bindOnce() {
   $('boardClose').onclick = () => show('board', false);
   $('board').querySelectorAll('.lvlbtns button').forEach((b) => { b.onclick = () => renderBoard(b.dataset.lvl); });
   $('saveBtn').onclick = saveScore;
+  $('againBtn').onclick = () => restart();
   $('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveScore(); });
   window.addEventListener('keydown', (e) => {
     if (!active || e.repeat || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
@@ -366,7 +411,13 @@ function bindOnce() {
   botMesh   = makeRat({ tint: '#ff4444' });
   ghostMesh.visible = botMesh.visible = false;
   scene.add(ghostMesh, botMesh);
-  pruneStorage([GHOST_PREFIX, 'ratrace_splits_'], `_${TODAY}_`);
+  // Drop ghosts (and old split data) from other days so localStorage can't fill up.
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k.startsWith('ratrace_splits_') || (k.startsWith(GHOST_PREFIX) && !k.includes(`_${TODAY}_`))) localStorage.removeItem(k);
+    }
+  } catch { /* storage unavailable */ }
 }
 
 // ── Loop ─────────────────────────────────────────────────────
@@ -380,7 +431,8 @@ function fixedStep(dt) {
   for (let i; (i = touchedCheese()) !== -1;) {
     removeCheese(i);
     collected++;
-    markSplit(raceTime);
+    showLastSector(markSplit(raceTime));
+    updateSideHud();
     if (collected >= total) setGateOpen(true);
   }
   if (collected >= total && atGate()) finish();
@@ -408,6 +460,7 @@ export function startSolo(gameScreen) {
   active = true;
   document.body.classList.add('solo');
   show('info', true);
+  show('centerHud', true, 'flex');
   show('mpHud', false);
   buildControls();
   setSplitsVisible(splitsOn);
@@ -421,7 +474,7 @@ export function stopSolo() {
   active = false;
   document.body.classList.remove('solo', 'menu-open');
   ghostMesh.visible = botMesh.visible = false;
-  for (const id of ['info', 'win', 'board', 'gatehint']) show(id, false);
+  for (const id of ['info', 'centerHud', 'win', 'board', 'gatehint']) show(id, false);
   setSplitsVisible(false);
-  $('controls').innerHTML = '';
+  $('barMain').innerHTML = $('controls').innerHTML = '';
 }

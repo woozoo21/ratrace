@@ -41,7 +41,7 @@ function buildJoystick() {
       z-index:15; pointer-events:none; opacity:0.45; transition:opacity 0.15s; }
     #joyBase.live { opacity:1; }
     #joyThumb { position:absolute; left:50%; top:50%; width:${JOY_RADIUS * 0.8}px; height:${JOY_RADIUS * 0.8}px;
-      margin:${-JOY_RADIUS * 0.4}px; border-radius:50%; background:rgba(255,211,90,0.7); border:2px solid #ffd35a; }
+      margin:${-JOY_RADIUS * 0.4}px; border-radius:50%; background:rgba(45,224,192,0.7); border:2px solid #2de0c0; }
     #joyReverse { position:absolute; left:18%; right:18%; top:${50 + REVERSE_AT * 50}%; height:2px;
       background:rgba(255,80,80,0.7); }
     #joyReverse::after { content:'reverse'; position:absolute; left:0; right:0; top:3px; text-align:center;

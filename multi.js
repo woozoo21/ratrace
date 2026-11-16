@@ -16,7 +16,7 @@ import {
   initEngine, startLoop, stopLoop, setMaze, setCheeses, removeCheese, cheeses, touchedCheese, atGate,
   setGateOpen, stepPlayer, makeRat, disposeRat, player, scene, minimapDots,
 } from './engine.js';
-import { generateMaze, braidMaze, multiCheeseCell, wrapAngle, escapeHtml, cleanName } from './core.js';
+import { generateMaze, braidMaze, multiCheeseCell, bfs, rowOf, colOf, wrapAngle, escapeHtml, cleanName } from './core.js';
 import {
   getDatabase, ref, get, set, update, remove, onValue, onDisconnect, runTransaction, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
@@ -48,6 +48,8 @@ let resultsShown = false, cheeseNotified = false, claiming = false, starting = f
 let points = {}, pointNames = {}, pointsMatch = 0;
 let statusBase = '', lastStatus = '', lastTimer = '', lastCount = '';
 let lastSend = 0;
+let roundMaze = null, finDist = null;   // this round's maze and each cell's distance to the finish
+let towerAt = 0, lastTower = '', firstAnnounced = false;
 const sent = { x: NaN, z: NaN, yaw: NaN };
 const others = {};            // pid → { mesh, x, z, yaw, tx, tz, tyaw, dot }
 let unsubs = [];
@@ -242,7 +244,7 @@ function onPlayers() {
 
   if (race && !resultsShown && myFinish === null) {
     const first = finishers()[0];
-    if (first && !statusBase.startsWith('🏁')) statusBase = `🏁 ${first.name} escaped the maze first!`;
+    if (first && !firstAnnounced) { firstAnnounced = true; statusBase = `${first.name} escaped the maze first`; }
   }
   if (resultsShown) renderResultsFooter();
 }
@@ -268,8 +270,10 @@ function beginRound(r) {
   race = r; rk = `${r.match}_${r.round}`;
   if (r.match !== pointsMatch) { points = {}; pointNames = {}; pointsMatch = r.match; }
   myFinish = null; resultsShown = false; cheeseNotified = false; claiming = false;
-  statusBase = `Round ${r.round} of ${TOTAL_ROUNDS}`;
-  lastTimer = lastCount = lastStatus = '';
+  statusBase = ''; firstAnnounced = false;
+  lastTimer = lastCount = lastStatus = lastTower = '';
+  $('mpRound').textContent = `Round ${r.round} / ${TOTAL_ROUNDS}`;
+  $('mpLevel').textContent = (LEVELS[r.level] || LEVELS.easy).label;
 
   handlers.onRaceStart?.();
   initEngine($('gameScreen'));
@@ -281,6 +285,8 @@ function beginRound(r) {
   const cells = (LEVELS[r.level] || LEVELS.easy).cells, seed = (r.seed + r.round * 101) | 0;
   const maze = generateMaze(cells, cells, seed);
   braidMaze(maze, seed + 7, 0.08);
+  roundMaze = maze;
+  finDist = bfs(maze, maze.finish.r, maze.finish.c).dist;
   setMaze(maze);
   const cheese = multiCheeseCell(maze);
   setCheeses(cheese ? [cheese] : []);
@@ -326,7 +332,8 @@ function fixedStep(dt) {
     myFinish = raceClock();
     update(playerRef(), { rk, finished: true, finishTime: myFinish });
     const first = finishers().every(f => f.pid === me.id);
-    statusBase = `🏁 You ${first ? 'escaped first' : 'finished'}! Time: ${myFinish.toFixed(2)}s`;
+    firstAnnounced = true;
+    statusBase = `You ${first ? 'escaped first' : 'finished'} in ${myFinish.toFixed(2)}s`;
   }
 }
 
@@ -337,7 +344,7 @@ function frame(dt) {
   if (count !== lastCount) { $('countdown').textContent = lastCount = count; show('countdown', !!count); }
 
   const clockNow = Math.max(0, -toStart / 1000);
-  const timer = `⏱ ${(myFinish ?? clockNow).toFixed(2)}s`;
+  const timer = (myFinish ?? clockNow).toFixed(2);
   if (timer !== lastTimer) $('mpTimer').textContent = lastTimer = timer;
 
   // Ease the other rats toward their latest reported positions.
@@ -357,6 +364,8 @@ function frame(dt) {
   }
 
   // Round ends when everyone is home, or GRACE_S after the first finisher.
+  if (now - towerAt >= 250) { towerAt = now; renderTower(); }
+
   let status = statusBase;
   if (!resultsShown && toStart <= 0) {
     const done = finishers(), all = present();
@@ -368,6 +377,27 @@ function frame(dt) {
     }
   }
   if (status !== lastStatus) $('mpStatus').textContent = lastStatus = status;
+}
+
+/** Live standings: finishers by time, then everyone else by maze distance left to the gate. */
+function renderTower() {
+  const owner = cheeseOwner();
+  const left = (x, z) => {
+    const d = finDist[rowOf(roundMaze, z) * roundMaze.gw + colOf(roundMaze, x)];
+    return d >= 0 ? d : 9999;
+  };
+  const rows = present().map(([pid, p]) => {
+    const mine = pid === me.id, o = others[pid];
+    const done = p.rk === rk && p.finished;
+    return { pid, mine, done, name: p.name, color: p.color, time: p.finishTime || 0,
+             left: mine ? left(player.x, player.z) : o ? left(o.x, o.z) : 9999 };
+  }).sort((a, b) => (b.done - a.done) || (a.done ? a.time - b.time : a.left - b.left));
+  const html = rows.map((r, i) =>
+    `<li class="${r.mine ? 'me ' : ''}${r.done ? 'done' : ''}"><span class="swatch" style="background:${escapeHtml(r.color || '#888')}"></span>` +
+    `<span class="pos">${i + 1}</span><span class="name">${escapeHtml(r.name)}</span>` +
+    (owner && owner.pid === r.pid ? '<span class="tag">CHEESE</span>' : '') +
+    `<span class="val">${r.done ? r.time.toFixed(2) : `${r.left} left`}</span></li>`).join('');
+  if (html !== lastTower) $('mpTower').innerHTML = lastTower = html;
 }
 
 // ── Results ──────────────────────────────────────────────────

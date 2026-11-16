@@ -14,12 +14,12 @@
   /* ── Screens ── */
   .screen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; }
   #startScreen { gap:28px; background:rgba(0,0,0,0.62); backdrop-filter:blur(2px); }
-  #startScreen h1 { font-size:clamp(34px,9vw,58px); color:#ffd35a; letter-spacing:8px; text-shadow:0 0 40px #ffd35a66, 0 2px 0 #000; }
+  #startScreen h1 { font-size:clamp(34px,9vw,58px); color:#2de0c0; letter-spacing:8px; text-shadow:0 0 40px #2de0c066, 0 2px 0 #000; }
   .startBtns { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
-  .startBtn { background:rgba(0,0,0,0.55); border:1px solid rgba(255,211,90,0.4); color:#ffd35a; font-size:17px;
+  .startBtn { background:rgba(0,0,0,0.55); border:1px solid rgba(45,224,192,0.4); color:#2de0c0; font-size:17px;
     padding:22px 38px; border-radius:4px; transition:all 0.25s; display:flex; flex-direction:column; align-items:center;
     gap:10px; backdrop-filter:blur(8px); }
-  .startBtn:hover { background:rgba(255,211,90,0.1); border-color:#ffd35a; transform:translateY(-3px); box-shadow:0 8px 32px #ffd35a22; }
+  .startBtn:hover { background:rgba(45,224,192,0.1); border-color:#2de0c0; transform:translateY(-3px); box-shadow:0 8px 32px #2de0c022; }
   .startBtn span { font-size:36px; }
   .startBtn small { font-size:11px; color:#888; letter-spacing:1px; text-transform:uppercase; }
 
@@ -39,109 +39,174 @@
   .ghostBtn { background:none; border:1px solid #555; color:#aaa; font-size:13px; padding:8px 16px; border-radius:6px; }
   .ghostBtn:hover { color:#fff; }
   #lobbyScreen h2 { color:#9fe; font-size:28px; }
-  #roomCodeDisplay { font-size:48px; color:#ffd35a; letter-spacing:10px; text-shadow:0 0 20px #ffd35a88; -webkit-user-select:text; user-select:text; }
+  #roomCodeDisplay { font-size:48px; color:#2de0c0; letter-spacing:10px; text-shadow:0 0 20px #2de0c088; -webkit-user-select:text; user-select:text; }
   #lobbyPlayers { background:#111; border:2px solid #9fe; border-radius:12px; padding:20px 30px; min-width:300px; min-height:120px; }
   #lobbyPlayers h3 { color:#9fe; margin-bottom:10px; }
   #playerList { list-style:none; line-height:2; font-size:15px; }
-  #startGameBtn { font-size:18px; padding:14px 32px; border-radius:10px; border:2px solid #ffd35a; background:#2a2410; color:#ffd35a; display:none; }
-  #startGameBtn:hover { background:#3a3410; }
+  #startGameBtn { font-size:18px; padding:14px 32px; border-radius:10px; border:2px solid #2de0c0; background:#0f2a26; color:#2de0c0; display:none; }
+  #startGameBtn:hover { background:#14403a; }
   #mpLevelSelect { display:flex; gap:10px; }
   #mpLevelSelect button { font-size:13px; padding:8px 16px; border-radius:6px; border:1px solid #555; background:#222; color:#fff; }
-  #mpLevelSelect button.active { border-color:#ffd35a; color:#ffd35a; background:#2a2410; }
+  #mpLevelSelect button.active { border-color:#2de0c0; color:#2de0c0; background:#0f2a26; }
   #mpLevelSelect button:disabled { opacity:0.6; cursor:default; }
   #waitingMsg { color:#aaa; font-size:13px; }
 
   /* ── Game HUD ── */
-  #gameScreen { position:absolute; inset:0; display:none; }
+  #gameScreen { position:absolute; inset:0; display:none; color:#fff; }
   #gameScreen canvas { display:block; touch-action:none; }
-  .panel { position:absolute; top:10px; left:10px; color:#fff; font-size:13px; background:rgba(0,0,0,0.55);
-    padding:10px 12px; border-radius:8px; max-width:320px; line-height:1.5; pointer-events:none; z-index:10; display:none; }
-  .panel b { color:#ffd35a; }
-  #hud { font-size:16px; color:#ffd35a; }
-  #ghosthud { font-size:14px; color:#aef; min-height:18px; white-space:pre-line; }
-  #mpStatus { white-space:pre-line; }
-  #minimap { position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.55); border:2px solid #888; border-radius:8px; z-index:10; }
-  #topBar { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:41; }
-  #topBar button { background:#222; color:#aaa; border:1px solid #555; border-radius:6px; padding:6px 14px; font-size:12px; }
-  #topBar button:hover { background:#333; color:#fff; }
-  #menuToggle { display:none; }
-  #controls { position:absolute; bottom:14px; left:10px; right:10px; display:flex; gap:8px; flex-wrap:wrap; z-index:10; pointer-events:none; }
-  #controls button { background:#222; color:#fff; border:1px solid #555; border-radius:6px; padding:8px 12px; font-size:13px; pointer-events:auto; }
-  #controls button:hover { background:#333; }
-  #controls button.active { border-color:#ffd35a; color:#ffd35a; }
-  #gatehint { position:absolute; bottom:64px; left:50%; transform:translateX(-50%); display:none; color:#ffd35a; font-size:15px;
-    background:rgba(0,0,0,0.6); padding:8px 14px; border-radius:8px; z-index:10; pointer-events:none; white-space:nowrap; }
-  #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#fff; font-size:15px; z-index:10; pointer-events:none; }
-  #countdown { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:120px; color:#fff; display:none;
-    text-shadow:0 0 40px #fff; z-index:30; pointer-events:none; }
-  #cheeseNotif { position:absolute; top:30%; left:50%; transform:translateX(-50%); display:none; color:#ffd35a; font-size:18px;
-    background:rgba(0,0,0,0.85); padding:14px 24px; border-radius:10px; border:2px solid #ffd35a; text-align:center; z-index:25; pointer-events:none; }
+  #backBtn { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:41; background:#222; color:#aaa;
+    border:1px solid #555; border-radius:6px; padding:6px 14px; font-size:12px; }
+  #backBtn:hover { background:#333; color:#fff; }
+  body.solo #backBtn { display:none; }
 
-  /* ── Splits ── */
-  #splits { position:absolute; top:46px; left:50%; transform:translateX(-50%); display:none; flex-direction:column; align-items:center;
-    gap:3px; z-index:10; max-width:calc(100vw - 20px); pointer-events:none; }
-  .split-row { display:flex; gap:3px; flex-wrap:wrap; justify-content:center; }
-  .split-row:empty { display:none; }
-  .split-box { background:rgba(17,17,17,0.85); border:1px solid #333; padding:2px 5px; border-radius:4px; display:flex; flex-direction:column;
-    align-items:center; min-width:52px; transition:background 0.3s; }
-  .split-label { font-size:9px; color:#888; min-height:11px; }
-  .split-time  { font-size:12px; color:#fff; font-weight:bold; }
-  .split-diff  { font-size:10px; min-height:12px; color:#ddd; }
-  .split-purple { background:#4a0080; border-color:#9b30ff; }
-  .split-green  { background:#004a00; border-color:#00cc00; }
-  .split-yellow { background:#4a3a00; border-color:#ffcc00; }
-  .split-red    { background:#4a0a0a; border-color:#ff5555; }
-  .split-active { border-color:#fff; }
-  #splitLast { font-size:13px; color:#fff; background:rgba(0,0,0,0.6); padding:2px 10px; border-radius:6px; }
-  #splitLast:empty { display:none; }
+  /* Timing tower (solo: sectors; multiplayer: live standings) */
+  .tower { position:absolute; top:10px; left:10px; width:252px; display:none; background:rgba(12,14,18,0.88); border:1px solid #333;
+    border-radius:6px; overflow:hidden; pointer-events:none; z-index:10; font-size:13px; }
+  .tower-head { display:flex; justify-content:space-between; align-items:baseline; padding:8px 12px 0; color:#9fe; font-size:12px;
+    letter-spacing:1px; text-transform:uppercase; }
+  .tower-main { display:flex; justify-content:space-between; align-items:baseline; padding:0 12px 8px; }
+  #mpTimer { font-size:38px; font-weight:bold; line-height:1.1; color:#2de0c0; }
+  #info .tower-head { padding-bottom:8px; }
+  .tower ol { list-style:none; display:flex; flex-direction:column; gap:1px; background:#2a2d34; border-top:1px solid #2a2d34; border-bottom:1px solid #2a2d34; }
+  .tower li { display:flex; align-items:center; gap:8px; padding:3px 12px 3px 0; background:#14171c; }
+  .tower .swatch { width:5px; align-self:stretch; background:#3a3d45; }
+  .tower .lbl, .tower .pos { color:#aaa; width:30px; }
+  .tower .pos { width:16px; text-align:right; }
+  .tower .time, .tower .name { flex:1; min-width:0; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tower .delta, .tower .val { color:#bbb; font-size:12px; }
+  .tower li.active .swatch { background:#fff; }
+  .tower li.sec-purple .swatch { background:#b06cff; } .tower li.sec-purple .delta { color:#d2a8ff; font-weight:bold; }
+  .tower li.sec-green  .swatch { background:#35d06b; } .tower li.sec-green  .delta { color:#5be38a; font-weight:bold; }
+  .tower li.sec-yellow .swatch { background:#ffcc00; } .tower li.sec-yellow .delta { color:#ffd84d; }
+  .tower li.me { background:#1f2530; }
+  .tower li.done .val { color:#5be38a; font-weight:bold; }
+  .tower .tag { color:#2de0c0; font-size:11px; font-weight:bold; }
+  #ghosthud, #mpStatus { padding:7px 12px 9px; display:flex; flex-direction:column; gap:3px; }
+  #ghosthud:empty, #mpStatus:empty { display:none; }
+  #mpStatus { white-space:pre-line; color:#ddd; display:block; }
+  .cmp { display:flex; justify-content:space-between; gap:10px; color:#ccc; }
+  .cmp > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cmp b { font-weight:bold; } .cmp .ahead { color:#5be38a; } .cmp .behind { color:#ff9a9a; }
+  .cmp.note { color:#9fe; }
+
+  /* Centre timing boxes, in the eye-line while driving (F1 qualifying style) */
+  #centerHud { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:none; align-items:flex-start; gap:10px;
+    pointer-events:none; z-index:10; }
+  .qbox { display:flex; flex-direction:column; background:rgba(8,9,12,0.92); border-radius:2px; overflow:hidden; min-width:150px; }
+  .qhead { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#000; }
+  .qbadge { background:#fff; color:#000; font-weight:bold; font-size:14px; padding:1px 6px; border-radius:2px; }
+  .qname { font-size:17px; font-weight:bold; letter-spacing:1px; text-transform:uppercase; padding-left:8px; border-left:3px solid #2de0c0; }
+  .qbody { display:flex; align-items:center; justify-content:center; gap:14px; padding:6px 12px; }
+  #timer { font-size:34px; line-height:1; min-width:108px; }
+  .qrival { display:flex; flex-direction:column; align-items:center; padding-left:14px; border-left:1px solid #444; color:#ccc; font-size:11px;
+    text-transform:uppercase; letter-spacing:1px; }
+  #qRivalTime { font-size:19px; color:#ddd; letter-spacing:0; }
+  #qStrip { display:flex; gap:2px; background:#000; }
+  #qStrip span { flex:1; min-width:9px; height:15px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; background:#26282e; }
+  #qStrip span.active { background:#5a5d66; }
+  #qStrip .sec-purple, #qLast.sec-purple { background:#9a3cf0; }
+  #qStrip .sec-green, #qLast.sec-green { background:#2fb85a; }
+  #qStrip .sec-yellow, #qLast.sec-yellow { background:#d9ac00; color:#000; }
+  #qGapVal { font-size:26px; line-height:1.3; color:#ddd; }
+  #qGapVal.ahead { color:#5be38a; } #qGapVal.behind { color:#ffd84d; }
+  #qLast { min-height:15px; padding:0 8px; font-size:11px; line-height:15px; text-align:center; background:#26282e; white-space:nowrap; }
+
+  #minimap { position:absolute; top:10px; right:10px; width:170px; height:170px; background:rgba(0,0,0,0.6); border:2px solid #888;
+    border-radius:8px; z-index:10; }
+
+  /* Bottom bar: the buttons you use most; everything else behind "More" */
+  #bottomBar { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:none; align-items:center; gap:6px; padding:6px;
+    background:rgba(12,14,18,0.88); border:1px solid #333; border-radius:6px; z-index:40; }
+  body.solo #bottomBar { display:flex; }
+  #barPanel { display:contents; }
+  #barMain { display:flex; gap:6px; }
+  #bottomBar button { background:#222; color:#fff; border:1px solid #555; border-radius:6px; padding:8px 12px; font-size:13px; white-space:nowrap; }
+  #bottomBar button:hover { background:#333; }
+  #bottomBar kbd { display:inline-block; margin-left:8px; min-width:18px; padding:0 4px; font-family:monospace; font-size:11px; line-height:16px;
+    text-align:center; color:#ccc; background:#111; border:1px solid #666; border-bottom-width:2px; border-radius:3px; }
+  #controls button { display:flex; justify-content:space-between; align-items:center; }
+  #bottomBar button.active { border-color:#2de0c0; color:#2de0c0; background:#0f2a26; }
+  #btn-hard { margin-right:10px; }
+  #controls { position:absolute; right:0; bottom:calc(100% + 6px); width:230px; display:none; flex-direction:column; gap:6px; padding:8px;
+    background:rgba(12,14,18,0.95); border:1px solid #333; border-radius:6px; }
+  body.menu-open #controls { display:flex; }
+  #controls button { text-align:left; }
+
+  /* Result card, on the right so it never covers the rat */
+  #win { position:absolute; right:10px; top:200px; width:300px; max-width:calc(100vw - 20px); display:none; flex-direction:column; gap:10px;
+    padding:16px; background:rgba(12,14,18,0.94); border:1px solid #333; border-top:4px solid #2de0c0; border-radius:6px; z-index:20; font-size:13px; }
+  #winHead { display:flex; justify-content:space-between; align-items:baseline; font-size:22px; font-weight:bold; letter-spacing:1px; }
+  #winTime { color:#2de0c0; }
+  #winRows { display:flex; flex-direction:column; gap:4px; }
+  #winForm { display:flex; gap:6px; }
+  #win input { flex:1; min-width:0; font-family:monospace; font-size:14px; padding:8px 10px; border-radius:6px; border:1px solid #888; background:#111; color:#fff; }
+  #win button { font-size:13px; padding:8px 12px; border-radius:6px; border:1px solid #2de0c0; background:#0f2a26; color:#2de0c0; }
+  #win button:disabled { opacity:0.5; }
+  #againBtn { border-color:#555 !important; background:#222 !important; color:#fff !important; }
+  #saveMsg { color:#9fe; min-height:16px; }
+
+  #gatehint { position:absolute; bottom:74px; left:50%; transform:translateX(-50%); display:none; color:#2de0c0; font-size:15px;
+    background:rgba(0,0,0,0.6); padding:8px 14px; border-radius:8px; z-index:10; pointer-events:none; white-space:nowrap; }
+  #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:15px; z-index:10; pointer-events:none; }
+  #countdown { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:120px; display:none;
+    text-shadow:0 0 40px #fff; z-index:30; pointer-events:none; }
+  #cheeseNotif { position:absolute; top:30%; left:50%; transform:translateX(-50%); display:none; color:#2de0c0; font-size:18px;
+    background:rgba(0,0,0,0.85); padding:14px 24px; border-radius:10px; border:2px solid #2de0c0; text-align:center; z-index:25; pointer-events:none; }
 
   /* ── Modals ── */
   .modal { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); display:none; color:#fff; font-size:14px;
     background:rgba(20,20,20,0.95); border-radius:14px; z-index:45; max-height:86vh; max-width:calc(100vw - 20px); overflow-y:auto; }
-  #win { font-size:22px; text-align:center; padding:24px 32px; border:2px solid #ffd35a; }
-  #win input { font-family:monospace; font-size:15px; padding:7px 10px; border-radius:6px; border:1px solid #888; background:#111; color:#fff; width:160px; margin:10px 6px 4px; }
-  #win button { font-size:14px; padding:8px 14px; border-radius:6px; border:1px solid #ffd35a; background:#2a2410; color:#ffd35a; }
-  #saveMsg { font-size:14px; color:#9fe; min-height:18px; }
   #board { padding:20px 26px; border:2px solid #9fe; min-width:min(340px,calc(100vw - 20px)); }
   #board h3 { margin-bottom:10px; color:#9fe; }
   #board ol { padding-left:24px; line-height:1.9; margin:6px 0; }
   #board .lvlbtns { margin-bottom:10px; }
   #board .lvlbtns button { font-size:12px; padding:5px 9px; margin-right:5px; background:#222; color:#fff; border:1px solid #555; border-radius:5px; }
-  #board .close { margin-top:8px; background:#2a2410; color:#ffd35a; border:1px solid #ffd35a; border-radius:6px; padding:7px 14px; }
+  #board .close { margin-top:8px; background:#0f2a26; color:#2de0c0; border:1px solid #2de0c0; border-radius:6px; padding:7px 14px; }
   .racebtn { font-size:11px; padding:2px 7px; margin-left:6px; background:#222; color:#9fe; border:1px solid #9fe; border-radius:4px; }
   .weekTable { width:100%; border-collapse:collapse; font-size:12px; }
   .weekTable td, .weekTable th { padding:4px 6px; text-align:center; }
-  #mpResultsModal { padding:28px 36px; border:2px solid #ffd35a; min-width:min(360px,calc(100vw - 20px)); text-align:center; }
-  #mpResultsModal h2 { color:#ffd35a; margin-bottom:4px; }
+  #mpResultsModal { padding:28px 36px; border:2px solid #2de0c0; min-width:min(360px,calc(100vw - 20px)); text-align:center; }
+  #mpResultsModal h2 { color:#2de0c0; margin-bottom:4px; }
   #mpResultsModal .sub { color:#aaa; font-size:12px; margin-bottom:14px; }
   #mpResultsModal .head { color:#9fe; margin-bottom:6px; }
   #mpResultsModal table { width:100%; border-collapse:collapse; margin-bottom:16px; }
   #mpResultsModal td { padding:4px 8px; }
-  #mpResultsModal .gold { color:#ffd35a; } #mpResultsModal .mint { color:#9fe; }
+  #mpResultsModal .gold { color:#2de0c0; } #mpResultsModal .mint { color:#9fe; }
   #mpResultsModal .dnf td { color:#777; } #mpResultsModal tr.me { background:#1a2a10; }
-  #mpResultsModal .winner { font-size:20px; color:#ffd35a; margin-bottom:16px; }
+  #mpResultsModal .winner { font-size:20px; color:#2de0c0; margin-bottom:16px; }
   #mpResultsModal button { font-size:14px; padding:10px 20px; margin:4px; border-radius:8px; border:2px solid #555; background:#222; color:#fff; }
-  #mpResultsModal button.primary { font-size:16px; border-color:#ffd35a; background:#2a2410; color:#ffd35a; }
+  #mpResultsModal button.primary { font-size:16px; border-color:#2de0c0; background:#0f2a26; color:#2de0c0; }
   #nameModal { position:absolute; inset:0; display:none; background:rgba(0,0,0,0.7); z-index:200; align-items:center; justify-content:center; }
-  #nameModal > div { background:#111; border:2px solid #ffd35a; border-radius:12px; padding:32px; width:min(320px,calc(100vw - 20px)); text-align:center; }
-  #nameModal p { color:#ffd35a; font-size:18px; margin-bottom:16px; }
+  #nameModal > div { background:#111; border:2px solid #2de0c0; border-radius:12px; padding:32px; width:min(320px,calc(100vw - 20px)); text-align:center; }
+  #nameModal p { color:#2de0c0; font-size:18px; margin-bottom:16px; }
   #nameModal input { font-family:monospace; font-size:18px; padding:10px 14px; border-radius:6px; border:1px solid #555; background:#0a0a0a; color:#fff; width:100%; text-align:center; }
-  #nameModal button { margin-top:12px; font-size:16px; padding:10px 24px; border-radius:6px; border:2px solid #ffd35a; background:#2a2410; color:#ffd35a; width:100%; }
+  #nameModal button { margin-top:12px; font-size:16px; padding:10px 24px; border-radius:6px; border:2px solid #2de0c0; background:#0f2a26; color:#2de0c0; width:100%; }
   #nameModal #nameModalCancel { font-size:14px; border:1px solid #555; background:none; color:#aaa; }
 
-  /* ── Touch devices: buttons live behind ☰ so thumbs can't hit them while driving ── */
+  /* ── Touch devices: bottom-left belongs to the joystick, so all buttons go behind one button under the minimap ── */
   @media (pointer: coarse), (max-width: 700px) {
-    .panel { font-size:11px; max-width:190px; padding:6px 8px; }
-    .panel .keys { display:none; }
-    #minimap { width:110px; height:110px; }
-    body.solo #menuToggle { display:block; }
-    #controls { display:none; top:46px; bottom:auto; left:50%; right:auto; transform:translateX(-50%); width:min(330px,calc(100vw - 20px));
-      background:rgba(0,0,0,0.88); padding:10px; border-radius:10px; border:1px solid #555; z-index:40; justify-content:center; }
-    body.menu-open #controls { display:flex; }
-    #splits { top:132px; }
-    .split-box { min-width:0; padding:0; width:16px; height:9px; }
-    .split-box span { display:none; }
-    #rivalRow { display:none; }
+    .tower { width:176px; font-size:11px; }
+    #mpTimer { font-size:26px; }
+    #minimap { width:104px; height:104px; }
+    /* no room for the sector list: the timing boxes move to the top-left and carry everything */
+    #info { display:none !important; }
+    #centerHud { left:10px; transform:none; flex-direction:column; gap:4px; }
+    .qbox { min-width:0; }
+    .qhead { padding:3px 8px; } .qname { font-size:12px; } .qbadge { font-size:11px; }
+    .qbody { padding:4px 8px; gap:8px; }
+    #timer { font-size:22px; min-width:70px; } #qRivalTime { font-size:13px; } .qrival { padding-left:8px; font-size:9px; }
+    #qStrip span { height:8px; font-size:0; min-width:5px; }
+    #qGap .qhead { display:none; } #qGapVal { font-size:16px; }
+    #bottomBar { position:fixed; left:auto; right:10px; top:124px; bottom:auto; transform:none; padding:0; background:none; border:0; }
+    #barPanel { position:absolute; right:0; top:calc(100% + 6px); width:280px; display:none; flex-direction:column; gap:6px; padding:8px;
+      max-height:calc(100vh - 176px); overflow-y:auto; background:rgba(12,14,18,0.95); border:1px solid #333; border-radius:6px; }
+    body.menu-open #barPanel { display:flex; }
+    #barMain { flex-wrap:wrap; }
+    #barMain button { flex:1 1 80px; }
+    #btn-hard { margin-right:0; }
+    #controls, body.menu-open #controls { position:static; display:flex; flex-direction:row; flex-wrap:wrap; width:auto; padding:0; background:none; border:0; }
+    #controls button { flex:1 1 120px; }
+    #win { top:auto; bottom:10px; }
     #gatehint { bottom:auto; top:38%; font-size:13px; }
     #countdown { font-size:90px; }
   }
@@ -191,24 +256,49 @@
 </div>
 
 <div id="gameScreen">
-  <div id="topBar"><button id="backBtn">← Menu</button><button id="menuToggle">☰ Options</button></div>
-  <div id="splits"></div>
-  <div id="info" class="panel">
-    <b>Rat Race</b> — Daily Solo<br>
-    <span class="keys"><span style="color:#9fe">Move:</span> W/S &amp; A/D &nbsp;|&nbsp; <span style="color:#9fe">Drag:</span> orbit cam<br></span>
-    <div id="level"></div>
-    <div id="hud"></div>
+  <button id="backBtn">← Leave</button>
+  <div id="info" class="tower">
+    <div class="tower-head"><span id="level"></span><span id="parLabel"></span></div>
+    <ol id="splits"></ol>
     <div id="ghosthud"></div>
   </div>
-  <div id="mpHud" class="panel"><b>🐭 Rat Race</b> — Multiplayer<br><div id="mpTimer">⏱ 0.00s</div><div id="mpStatus"></div></div>
-  <div id="controls"></div>
+  <div id="centerHud">
+    <div class="qbox">
+      <div class="qhead"><span class="qbadge" id="cheeseCount"></span><span class="qname" id="qLevel"></span></div>
+      <div class="qbody"><span id="timer">0.00</span><span class="qrival"><span id="qRivalName"></span><span id="qRivalTime"></span></span></div>
+      <div id="qStrip"></div>
+    </div>
+    <div class="qbox" id="qGap">
+      <div class="qhead"><span class="qname" id="qGapName"></span></div>
+      <div class="qbody"><span id="qGapVal"></span></div>
+      <div id="qLast"></div>
+    </div>
+  </div>
+  <div id="mpHud" class="tower">
+    <div class="tower-head"><span id="mpRound"></span><span id="mpLevel"></span></div>
+    <div class="tower-main"><span id="mpTimer">0.00</span></div>
+    <ol id="mpTower"></ol>
+    <div id="mpStatus"></div>
+  </div>
   <canvas id="minimap" width="170" height="170"></canvas>
-  <div id="gatehint">🔒 Collect all the cheese to open the gate!</div>
+  <div id="gatehint">Collect all the cheese to open the gate!</div>
   <div id="countdown"></div>
   <div id="cheeseNotif"></div>
-  <div id="win" class="modal">
-    <div id="winMsg"></div>
-    <div><input id="nameInput" placeholder="Enter your name" maxlength="14" autocomplete="off"><button id="saveBtn">Save time</button></div>
+  <div id="bottomBar">
+    <div id="barPanel">
+      <div id="barMain"></div>
+      <div id="controls"></div>
+    </div>
+    <button id="menuToggle">More</button>
+  </div>
+  <div id="win">
+    <div id="winHead"><span>FINISHED</span><span id="winTime"></span></div>
+    <div id="winRows"></div>
+    <div id="winForm">
+      <input id="nameInput" placeholder="Your name" maxlength="14" autocomplete="off" aria-label="Name for the leaderboard">
+      <button id="saveBtn">Save</button>
+      <button id="againBtn">Again</button>
+    </div>
     <div id="saveMsg"></div>
   </div>
   <div id="board" class="modal">
@@ -274,6 +364,7 @@ $('mpBack').onclick     = () => showScreen('start');
 $('backBtn').onclick    = () => { leaveRoom(); showScreen('start'); };
 $('lobbyBack').onclick  = () => { leaveRoom(); showScreen('start'); };
 $('menuToggle').onclick = () => document.body.classList.toggle('menu-open');
+screens.game.addEventListener('pointerdown', (e) => { if (e.target.tagName === 'CANVAS') document.body.classList.remove('menu-open'); });
 
 // ── Multiplayer lobby ──
 async function openRoom(action) {
