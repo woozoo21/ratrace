@@ -7,8 +7,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import {
-  CELL, FIXED_DT, MAX_SPEED, CHEESE_RADIUS, GATE_RADIUS, START_YAW,
-  cellX, cellZ, stepVehicle, wrapAngle,
+  CELL, FIXED_DT, MAX_SPEED, CHEESE_RADIUS, GATE_RADIUS,
+  cellX, cellZ, stepVehicle, wrapAngle, startYaw,
 } from './core.js';
 import { initControls, readInput } from './controls.js';
 
@@ -236,14 +236,14 @@ export function setMaze(m) {
 export function resetPlayer() {
   player.x = cellX(maze, maze.start.c);
   player.z = cellZ(maze, maze.start.r);
-  player.yaw = START_YAW;
+  player.yaw = startYaw(maze);
   player.speed = 0;
   Object.assign(prev, player);
   view.set(player.x, 0, player.z);
   lastView.copy(view);
   rat.position.copy(view);
   rat.rotation.y = player.yaw;
-  camera.position.set(player.x, 18, player.z + 22);
+  camera.position.set(player.x - Math.sin(player.yaw) * 22, 18, player.z - Math.cos(player.yaw) * 22);   // behind the rat
   orbit.target.set(player.x, 1.5, player.z);
   orbit.update();
 }

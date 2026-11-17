@@ -192,8 +192,16 @@ export function multiCheeseCell(maze) {
 // ── Vehicle ──────────────────────────────────────────────────
 // v = { x, z, yaw, speed };  input = { throttle: -1..1, turn: -1..1 } (turn > 0 = left)
 
+/** Spawn facing the start cell's open exit: east if open, else south (start is the top-left corner). */
+export function startYaw(maze) {
+  const { r, c } = maze.start;
+  if (isOpen(maze, r, c + 1)) return Math.PI / 2;   // +x
+  if (isOpen(maze, r + 1, c)) return 0;             // +z
+  return START_YAW;
+}
+
 export function makeVehicle(maze) {
-  return { x: cellX(maze, maze.start.c), z: cellZ(maze, maze.start.r), yaw: START_YAW, speed: 0 };
+  return { x: cellX(maze, maze.start.c), z: cellZ(maze, maze.start.r), yaw: startYaw(maze), speed: 0 };
 }
 
 export function stepVehicle(v, input, maze, dt, maxSpeed = MAX_SPEED, frozen = false) {
